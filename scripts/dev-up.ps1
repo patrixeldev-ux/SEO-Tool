@@ -20,7 +20,7 @@ function Wait-Url([string]$url, [string]$mustContain, [int]$seconds) {
     $deadline = (Get-Date).AddSeconds($seconds)
     while ((Get-Date) -lt $deadline) {
         try {
-            $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 $url
+            $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 15 $url
             if ($r.StatusCode -eq 200 -and ($mustContain -eq '' -or $r.Content -like "*$mustContain*")) { return $true }
         } catch { }
         Start-Sleep -Seconds 5

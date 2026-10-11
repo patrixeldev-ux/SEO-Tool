@@ -18,6 +18,7 @@ build/
 
 # Node
 node_modules/
+.pnpm-store/
 web/dist/
 web/coverage/
 *.tsbuildinfo

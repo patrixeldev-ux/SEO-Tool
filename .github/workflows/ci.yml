@@ -124,6 +124,10 @@ jobs:
           done
           docker compose -f docker-compose.dev.yml logs web
           exit 1
+      - name: No package-manager store leaked into the bind-mounted project folder
+        run: |
+          if [ -e web/.pnpm-store ]; then echo "web/.pnpm-store exists: pnpm store landed on the bind mount"; exit 1; fi
+          docker compose -f docker-compose.dev.yml logs web | grep -q "Already up to date" || { echo "web container reinstalled packages on start"; docker compose -f docker-compose.dev.yml logs web | tail -30; exit 1; }
       - name: Worker and beat are running
         run: |
           docker compose -f docker-compose.dev.yml ps --status running --services | tee running.txt
