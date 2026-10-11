@@ -16,12 +16,16 @@ Node.js 22+, and pnpm (`npm install -g pnpm@10.28.0`).
 ## 1. Get the code
 
 ```powershell
-git clone https://github.com/patrixeldev-ux/search-os.git "D:\Patrixel Projects\search-os"
-cd "D:\Patrixel Projects\search-os"
+cd "D:\Patrixel Projects"
+git clone https://github.com/patrixeldev-ux/seo-tool.git SEO-Tool
+cd "D:\Patrixel Projects\SEO-Tool"
+# If the folder already exists as a clone of the repo, run instead:
+#   cd "D:\Patrixel Projects\SEO-Tool"; git fetch origin; git checkout phase/0-foundation
+#   (after the Phase 0 pull request is merged: git checkout main; git pull)
 ```
 
 > Tip: bind mounts from a Windows drive are slower than from the WSL 2 filesystem. If file watching or page
-> reloads feel slow, clone inside WSL instead (`\\wsl$\Ubuntu\home\<you>\search-os`). The compose file already
+> reloads feel slow, clone inside WSL instead (`\\wsl$\Ubuntu\home\<you>\SEO-Tool`). The compose file already
 > turns on polling so reload works either way.
 
 ## 2. Configure

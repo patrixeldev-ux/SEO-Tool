@@ -25,7 +25,7 @@ change actually helped, rolls back what hurt, and learns which fixes work. Web a
 
 ## Context the executor needs
 - Owner: Darshit Patel (Patrixel, Vadodara). Dev machine: Windows + Docker Desktop. Local path:
-  `D:\Patrixel Projects\search-os`. GitHub: `patrixeldev-ux/search-os` (owner creates the empty repo).
+  `D:\Patrixel Projects\SEO-Tool`. GitHub: `patrixeldev-ux/seo-tool` (created by owner 2026-10-11).
 - Sister project Agency OS (`patrixeldev-ux/agency-os`) is integrated only in Phase 8, via public API + webhooks.
   Do not import its code.
 - Precision is the product. Every scoring/statistics function must be a pure function with unit tests on known inputs.
@@ -36,7 +36,7 @@ change actually helped, rolls back what hurt, and learns which fixes work. Web a
     legitimate owner choice. Blocking *search/retrieval* bots is high severity.
 
 ## Decisions already made (do not revisit)
-- **Name/repo:** working name "Search OS", repo `search-os`, monorepo.
+- **Name/repo:** working name "Search OS" (python package `searchos`), repo `patrixeldev-ux/seo-tool`, monorepo.
 - **Backend:** Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2 (async, asyncpg), Alembic, PostgreSQL 16, Redis 7,
   Celery 5 + celery beat. Package manager `uv`. Lint `ruff`, types `mypy --strict` on `searchos/stats` and
   `searchos/audit`, tests `pytest` + `pytest-asyncio`.
@@ -238,3 +238,4 @@ search-os/
 - 2026-10-11 Sonnet: 0.9 done — DEVIATION: ci.yml written (backend job with Postgres 16 + Redis 7 services: ruff, ruff format --check, mypy, alembic upgrade on empty DB, pytest; web job: typecheck, vitest, build; compose-config job). GitHub Actions cannot run here, so the identical commands were run locally against a brand-new database and a clean 'pnpm install --frozen-lockfile': ruff/mypy clean, 92 pytest passed, 16 vitest passed, build ok. 'CI green on the PR' pending the owner's first push
 - 2026-10-11 Sonnet: 0.10 done — DEVIATION: docs/LOCAL_TESTING.md (PowerShell, Docker Desktop path + no-Docker path, seed command, troubleshooting). Verified from a clean git clone using the no-Docker path (uv sync, alembic, seed_demo, uvicorn, CLI celery worker, pnpm install/test/build, scripted API flow). Docker path itself unverified (no daemon here), same pending item as 0.7
 - 2026-10-11 Sonnet: Phase 0 verification — backend: ruff clean, ruff format clean, mypy clean (37 files), pytest 94 passed (real Postgres 16 + Redis, real Celery worker); web: typecheck clean, vitest 16 passed, build ok; live API run (uvicorn + CLI celery worker): /health, /version, register -> login -> create site -> read back, second org gets 404, refresh rotation + reuse revocation, CORS, demo job queued->running->done all PASS. Open items for owner: Docker path (0.7, 0.10) and GitHub Actions run (0.9) need a first run on the Windows machine / after pushing.
+- 2026-10-11 Opus: verified Phase 0 independently (pytest 94 passed, ruff clean, vitest 16 passed); repo/path renamed to patrixeldev-ux/seo-tool and D:\Patrixel Projects\SEO-Tool.
