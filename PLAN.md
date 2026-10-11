@@ -114,7 +114,7 @@ search-os/
 | .github/workflows/ci.yml | create | CI |
 | docs/LOCAL_TESTING.md | create | how to run |
 
-- [ ] 0.1 Monorepo skeleton, README, .gitignore, .editorconfig, LICENSE placeholder (proprietary). — Done when: tree matches "Repo layout".
+- [x] 0.1 Monorepo skeleton, README, .gitignore, .editorconfig, LICENSE placeholder (proprietary). — Done when: tree matches "Repo layout".
 - [ ] 0.2 Backend app factory, `pydantic-settings` config, `/health` and `/version`; ruff/mypy/pytest config. — Done when: `uv run pytest` passes, `/health` returns 200.
 - [ ] 0.3 Models + first migration: `orgs`, `users`, `memberships(role)`, `sites(org_id, domain, display_name, settings jsonb, autopilot_enabled bool default false)`, `jobs(type, status, progress, error, payload, result)`. — Done when: `alembic upgrade head` works on an empty DB.
 - [ ] 0.4 Auth: register (creates org + owner), login, refresh (rotation + reuse detection), logout; role dependency `require_role()`. — Done when: tests cover happy path, wrong password, expired/reused refresh token.
@@ -227,3 +227,4 @@ search-os/
 ## Progress log
 (Executor appends one line per completed step or deviation.)
 - 2026-10-11 Opus: plan created.
+- 2026-10-11 Sonnet: 0.1 done — monorepo tree, README, .gitignore, .editorconfig, .gitattributes (LF), proprietary LICENSE placeholder
