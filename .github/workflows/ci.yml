@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (ruff, mypy, pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: searchos
+          POSTGRES_PASSWORD: searchos
+          POSTGRES_DB: searchos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U searchos -d searchos"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      # CI-only values for throw-away service containers; not real secrets.
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://searchos:searchos@localhost:5432/searchos
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-only-secret-0123456789-0123456789-abcdef
+      CORS_ORIGINS: http://localhost:5173
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Ruff (lint)
+        run: uv run ruff check .
+      - name: Ruff (format)
+        run: uv run ruff format --check .
+      - name: Mypy
+        run: uv run mypy searchos
+      - name: Alembic upgrade on an empty database
+        run: uv run alembic upgrade head
+      - name: Pytest (real Postgres + Redis)
+        run: uv run pytest -q
+
+  web:
+    name: Web (typecheck, vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  compose:
+    name: Docker dev stack boots (build, migrate, seed, login, web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose -f docker-compose.dev.yml config --quiet
+      - name: Build and start the stack exactly as the owner runs it
+        run: docker compose -f docker-compose.dev.yml up -d --build
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:8000/health && exit 0
+            sleep 5
+          done
+          docker compose -f docker-compose.dev.yml logs api
+          exit 1
+      - name: Seed demo account and log in
+        run: |
+          docker compose -f docker-compose.dev.yml exec -T api python -m searchos.seed_demo
+          curl -fsS -X POST http://localhost:8000/auth/login \
+            -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
+            -d '{"email":"demo@example.com","password":"demo-password-123"}' | grep -q access_token
+      - name: Wait for web dev server
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:5173/ | grep -q '<div id="root"' && exit 0
+            sleep 5
+          done
+          docker compose -f docker-compose.dev.yml logs web
+          exit 1
+      - name: No package-manager store leaked into the bind-mounted project folder
+        run: |
+          if [ -e web/.pnpm-store ]; then echo "web/.pnpm-store exists: pnpm store landed on the bind mount"; exit 1; fi
+          docker compose -f docker-compose.dev.yml logs web | grep -q "Already up to date" || { echo "web container reinstalled packages on start"; docker compose -f docker-compose.dev.yml logs web | tail -30; exit 1; }
+      - name: Worker and beat are running
+        run: |
+          docker compose -f docker-compose.dev.yml ps --status running --services | tee running.txt
+          for s in postgres redis api worker beat web; do grep -qx "$s" running.txt || { docker compose -f docker-compose.dev.yml logs "$s"; exit 1; }; done
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.dev.yml logs --tail=200

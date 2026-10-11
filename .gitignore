@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.pnpm-store/
+web/dist/
+web/coverage/
+*.tsbuildinfo
+
+# Tauri / Rust
+desktop/src-tauri/target/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
+celerybeat-schedule*
+dump.rdb
+
+# Local diagnostics written by scripts/diagnose.ps1
+diagnose.txt

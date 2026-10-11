@@ -1,0 +1,113 @@
+# Local development stack:  docker compose -f docker-compose.dev.yml up --build
+#   web  -> http://localhost:5173      api -> http://localhost:8000 (docs at /docs)
+# Requires a .env file (copy .env.example).
+
+name: search-os
+
+x-backend: &backend
+  build:
+    context: ./backend
+  env_file: .env
+  environment: &backend-env
+    # Inside Docker the services are reachable by service name, not localhost.
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-searchos}:${POSTGRES_PASSWORD:-searchos}@postgres:5432/${POSTGRES_DB:-searchos}
+    REDIS_URL: redis://redis:6379/0
+    # Bind mounts from Windows do not emit file-change events into the container; poll instead.
+    WATCHFILES_FORCE_POLLING: "true"
+  volumes:
+    - ./backend:/app
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-searchos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-searchos}
+      POSTGRES_DB: ${POSTGRES_DB:-searchos}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-searchos} -d ${POSTGRES_DB:-searchos}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-56379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *backend
+    # Single shell string on purpose: every flag must reach uvicorn. `exec` lets it receive Ctrl+C / SIGTERM.
+    command:
+      - sh
+      - -c
+      - >-
+        alembic upgrade head &&
+        exec uvicorn searchos.main:create_app --factory --host 0.0.0.0 --port 8000
+        --reload --reload-dir searchos
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  worker:
+    <<: *backend
+    command: >
+      watchfiles --filter python
+      "celery -A searchos.worker.app worker --loglevel=info"
+      searchos
+    depends_on:
+      api:
+        condition: service_healthy
+
+  beat:
+    <<: *backend
+    command: >
+      watchfiles --filter python
+      "celery -A searchos.worker.app beat --loglevel=info --schedule /tmp/celerybeat-schedule"
+      searchos
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    command: sh -c "pnpm install --frozen-lockfile && pnpm dev --host 0.0.0.0 --port 5173"
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      # Bind mounts from Windows do not emit file-change events into the container; poll instead.
+      VITE_USE_POLLING: "true"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  redisdata:
+  web_node_modules:
