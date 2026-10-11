@@ -33,7 +33,7 @@ PASSWORD = "correct horse battery staple"
 
 
 def _default_test_redis_url() -> str:
-    """Same Redis server as REDIS_URL (e.g. the `redis` container), but logical DB 15 so dev data is untouched."""
+    """Same Redis server as REDIS_URL (e.g. the redis container) but logical DB 15, so dev data is safe."""
     base = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     return make_url(base).set(database="15").render_as_string(hide_password=False)
 

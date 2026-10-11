@@ -1,6 +1,6 @@
 # PLAN: Search OS — autonomous SEO / AEO / GEO platform (web + desktop)
 Created: 2026-10-11 · Planner: Opus 5.5 · Executor: Sonnet 5.5
-Status: READY (execute one phase at a time; Phase 0 first)
+Status: PHASE 0 DONE — Phase 1 next
 
 ## Goal
 A platform where the owner adds a website and the system **plans the SEO/AEO/GEO work itself and carries it out**:
@@ -237,3 +237,4 @@ search-os/
 - 2026-10-11 Sonnet: 0.8 done — Vite+React+TS+Tailwind v4+hand-written shadcn/ui components (shadcn registry blocked, so components.json kept for future 'shadcn add'); TanStack Router/Query; login/register, org switcher (+create org), sites list/create, 8 empty nav sections, light/dark; API client with single-flight silent refresh (+Web Locks across tabs). 16 vitest tests incl. register->create site flow; typecheck+build green. Not viewed in a real browser (none available here)
 - 2026-10-11 Sonnet: 0.9 done — DEVIATION: ci.yml written (backend job with Postgres 16 + Redis 7 services: ruff, ruff format --check, mypy, alembic upgrade on empty DB, pytest; web job: typecheck, vitest, build; compose-config job). GitHub Actions cannot run here, so the identical commands were run locally against a brand-new database and a clean 'pnpm install --frozen-lockfile': ruff/mypy clean, 92 pytest passed, 16 vitest passed, build ok. 'CI green on the PR' pending the owner's first push
 - 2026-10-11 Sonnet: 0.10 done — DEVIATION: docs/LOCAL_TESTING.md (PowerShell, Docker Desktop path + no-Docker path, seed command, troubleshooting). Verified from a clean git clone using the no-Docker path (uv sync, alembic, seed_demo, uvicorn, CLI celery worker, pnpm install/test/build, scripted API flow). Docker path itself unverified (no daemon here), same pending item as 0.7
+- 2026-10-11 Sonnet: Phase 0 verification — backend: ruff clean, ruff format clean, mypy clean (37 files), pytest 94 passed (real Postgres 16 + Redis, real Celery worker); web: typecheck clean, vitest 16 passed, build ok; live API run (uvicorn + CLI celery worker): /health, /version, register -> login -> create site -> read back, second org gets 404, refresh rotation + reuse revocation, CORS, demo job queued->running->done all PASS. Open items for owner: Docker path (0.7, 0.10) and GitHub Actions run (0.9) need a first run on the Windows machine / after pushing.

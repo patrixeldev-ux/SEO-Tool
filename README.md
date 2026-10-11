@@ -21,4 +21,5 @@ See [docs/LOCAL_TESTING.md](docs/LOCAL_TESTING.md) (Windows + Docker Desktop ins
 
 ## Status
 
-Phase 0 (foundation) in progress. Track progress in [PLAN.md](PLAN.md#progress-log).
+Phase 0 (foundation) is complete: auth + multi-tenant orgs/sites, background jobs, web shell, CI, local stack.
+Next: Phase 1 (crawler and audit). Track progress in [PLAN.md](PLAN.md#progress-log).

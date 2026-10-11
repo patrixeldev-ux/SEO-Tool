@@ -48,10 +48,14 @@ services:
 
   api:
     <<: *backend
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn searchos.main:create_app --factory --host 0.0.0.0 --port 8000
-             --reload --reload-dir searchos"
+    # Single shell string on purpose: every flag must reach uvicorn. `exec` lets it receive Ctrl+C / SIGTERM.
+    command:
+      - sh
+      - -c
+      - >-
+        alembic upgrade head &&
+        exec uvicorn searchos.main:create_app --factory --host 0.0.0.0 --port 8000
+        --reload --reload-dir searchos
     ports:
       - "8000:8000"
     depends_on:
