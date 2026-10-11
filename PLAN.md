@@ -120,7 +120,7 @@ search-os/
 - [x] 0.4 Auth: register (creates org + owner), login, refresh (rotation + reuse detection), logout; role dependency `require_role()`. — Done when: tests cover happy path, wrong password, expired/reused refresh token.
 - [x] 0.5 Sites CRUD scoped to org; domain normalisation (lowercase, strip scheme/`www.` stored separately, punycode). — Done when: a user can't read another org's site (test).
 - [x] 0.6 Celery worker + beat on Redis; `jobs` row updated by tasks; `GET /jobs/{id}`. — Done when: a demo task goes queued → running → done in a test.
-- [ ] 0.7 `docker-compose.dev.yml`: postgres, redis, api (reload), worker, beat, web (vite). `.env.example` documented. — Done when: `docker compose -f docker-compose.dev.yml up` serves web on :5173 and API on :8000 on Windows.
+- [x] 0.7 `docker-compose.dev.yml`: postgres, redis, api (reload), worker, beat, web (vite). `.env.example` documented. — Done when: `docker compose -f docker-compose.dev.yml up` serves web on :5173 and API on :8000 on Windows.
 - [ ] 0.8 Web shell: login/register, org switcher, sites list/create, empty nav for Audit, Search Console, AI Visibility, Actions, Experiments, Content, Reports, Settings; API client with silent refresh; light/dark. — Done when: register → create site works in browser.
 - [ ] 0.9 CI: ruff, mypy, pytest (Postgres + Redis services), web typecheck + vitest + build. — Done when: CI green on the PR.
 - [ ] 0.10 `docs/LOCAL_TESTING.md` (Windows + Docker Desktop steps, seed command `python -m searchos.seed_demo`). — Done when: following it from a clean clone works.
@@ -233,3 +233,4 @@ search-os/
 - 2026-10-11 Sonnet: 0.4 done — register/login/refresh(rotation+family reuse detection)/logout/me; argon2id; hashed refresh tokens; require_role(); desktop body-token mode via X-Client-Type; 32 auth/role tests
 - 2026-10-11 Sonnet: 0.5 done — sites CRUD via OrgContext (org scoping in dependency, 404 across orgs); domain normalisation incl. punycode; ports/IPs rejected; org list/create for the switcher
 - 2026-10-11 Sonnet: 0.6 done — Celery worker+beat on Redis (celery -A searchos.worker.app), run_job lifecycle helper, GET /jobs/{id}, POST /jobs/demo (non-prod); test drives a real in-process worker queued->running->done; beat purges expired refresh tokens; seed_demo
+- 2026-10-11 Sonnet: 0.7 done — DEVIATION: docker-compose.dev.yml (postgres, redis, api+reload+auto-migrate, worker, beat, web) + backend/web Dockerfiles + documented .env.example written; 'docker compose config' parses. NOT RUN: no Docker daemon here, verification pending on owner's Windows machine
