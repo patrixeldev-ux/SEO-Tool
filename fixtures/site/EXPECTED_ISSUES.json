@@ -1,0 +1,225 @@
+{
+  "description": "Exact set of (check_id, url path) the audit must report for this fixture. Site-level issues are keyed to '/'. Entries with requires=browser need Chromium.",
+  "issues": [
+    {
+      "check_id": "AI_SEARCH_BOT_BLOCKED",
+      "url": "/",
+      "note": "robots.txt blocks PerplexityBot (a search bot) entirely."
+    },
+    {
+      "check_id": "AI_TRAINING_BOT_BLOCKED",
+      "url": "/",
+      "note": "robots.txt blocks GPTBot (a training bot) entirely."
+    },
+    {
+      "check_id": "ANSWER_BLOCK_MISSING",
+      "url": "/defects/answer-block-missing.html",
+      "note": "Question H2s followed by a >80-word paragraph / a list."
+    },
+    {
+      "check_id": "AUTHOR_DATE_MISSING",
+      "url": "/defects/author-date-missing.html",
+      "note": "og:type=article but no author and no date."
+    },
+    {
+      "check_id": "BLOCKED_IN_SITEMAP",
+      "url": "/private/report.html",
+      "note": "In the sitemap but Disallow: /private/ in robots.txt."
+    },
+    {
+      "check_id": "BROKEN_INTERNAL_LINK",
+      "url": "/defects/broken-link.html",
+      "note": "Links to /gone.html (404) and /server-error.html (500)."
+    },
+    {
+      "check_id": "CANONICAL_MISMATCH",
+      "url": "/defects/canonical-mismatch.html",
+      "note": "Canonical is /products/ (a 200 page), not itself."
+    },
+    {
+      "check_id": "CANONICAL_MISMATCH",
+      "url": "/defects/canonical-redirect.html",
+      "note": "Canonical differs from the page's own URL."
+    },
+    {
+      "check_id": "CANONICAL_MISSING",
+      "url": "/defects/canonical-missing.html",
+      "note": "No <link rel=canonical>."
+    },
+    {
+      "check_id": "CANONICAL_TO_NON200",
+      "url": "/defects/canonical-redirect.html",
+      "note": "Canonical /redir-single answers 301."
+    },
+    {
+      "check_id": "DEEP_PAGE",
+      "url": "/deep/level-5.html",
+      "note": "Reached only by a five-click chain from the homepage (depth 5 > 4)."
+    },
+    {
+      "check_id": "H1_MISSING",
+      "url": "/defects/h1-missing.html",
+      "note": "No <h1>."
+    },
+    {
+      "check_id": "H1_MULTIPLE",
+      "url": "/defects/h1-multiple.html",
+      "note": "Two <h1> elements."
+    },
+    {
+      "check_id": "HREFLANG_INVALID",
+      "url": "/defects/hreflang-invalid.html",
+      "note": "hreflang=\"english\" is not a valid language code."
+    },
+    {
+      "check_id": "HTTPS_MISSING",
+      "url": "/",
+      "note": "Fixture is served over plain HTTP, so the site is not on HTTPS."
+    },
+    {
+      "check_id": "HTTP_4XX",
+      "url": "/gone.html",
+      "note": "No such page: 404."
+    },
+    {
+      "check_id": "HTTP_5XX",
+      "url": "/server-error.html",
+      "note": "_server.json makes it answer 500."
+    },
+    {
+      "check_id": "IMG_ALT_MISSING",
+      "url": "/defects/img-alt-missing.html",
+      "note": "<img> without alt attribute."
+    },
+    {
+      "check_id": "JS_DEPENDENT_CONTENT",
+      "url": "/defects/js-rendered.html",
+      "note": "Raw text is far below 50% of the rendered text.",
+      "requires": "browser"
+    },
+    {
+      "check_id": "LANG_MISSING",
+      "url": "/defects/lang-missing.html",
+      "note": "<html> without lang."
+    },
+    {
+      "check_id": "LLMS_TXT",
+      "url": "/",
+      "note": "No /llms.txt is published (info only)."
+    },
+    {
+      "check_id": "META_DESC_DUPLICATE",
+      "url": "/defects/dup-meta-a.html",
+      "note": "Same description as dup-meta-b."
+    },
+    {
+      "check_id": "META_DESC_DUPLICATE",
+      "url": "/defects/dup-meta-b.html",
+      "note": "Same description as dup-meta-a."
+    },
+    {
+      "check_id": "META_DESC_MISSING",
+      "url": "/defects/meta-missing.html",
+      "note": "No meta description."
+    },
+    {
+      "check_id": "NOINDEX_IN_SITEMAP",
+      "url": "/defects/noindex-in-sitemap.html",
+      "note": "Meta robots noindex, listed in sitemap."
+    },
+    {
+      "check_id": "NOINDEX_IN_SITEMAP",
+      "url": "/defects/xrobots-noindex.html",
+      "note": "X-Robots-Tag: noindex header, listed in sitemap."
+    },
+    {
+      "check_id": "ORG_SCHEMA_MISSING",
+      "url": "/",
+      "note": "Homepage only carries WebSite JSON-LD, no Organization/LocalBusiness."
+    },
+    {
+      "check_id": "ORPHAN_PAGE",
+      "url": "/defects/orphan.html",
+      "note": "In the sitemap, zero internal inlinks."
+    },
+    {
+      "check_id": "REDIRECT_CHAIN",
+      "url": "/redir-chain-a",
+      "note": "/redir-chain-a -> /redir-chain-b -> /chain-final.html (2 hops)."
+    },
+    {
+      "check_id": "REDIRECT_LOOP",
+      "url": "/redir-loop-a",
+      "note": "/redir-loop-a and /redir-loop-b redirect to each other."
+    },
+    {
+      "check_id": "SCHEMA_PARSE_ERROR",
+      "url": "/defects/schema-parse-error.html",
+      "note": "Trailing comma makes the JSON-LD unparseable."
+    },
+    {
+      "check_id": "SCHEMA_REQUIRED_PROP_MISSING",
+      "url": "/defects/schema-missing-props.html",
+      "note": "Product lacks offers/review/aggregateRating."
+    },
+    {
+      "check_id": "THIN_CONTENT",
+      "url": "/defects/js-rendered.html",
+      "note": "The raw HTML holds almost no text (the body is built by JavaScript)."
+    },
+    {
+      "check_id": "THIN_CONTENT",
+      "url": "/defects/thin.html",
+      "note": "About 40 words of main text (< 250)."
+    },
+    {
+      "check_id": "TITLE_DUPLICATE",
+      "url": "/defects/dup-title-a.html",
+      "note": "Same title as dup-title-b."
+    },
+    {
+      "check_id": "TITLE_DUPLICATE",
+      "url": "/defects/dup-title-b.html",
+      "note": "Same title as dup-title-a."
+    },
+    {
+      "check_id": "TITLE_LENGTH",
+      "url": "/defects/title-long.html",
+      "note": "Title is over 60 characters."
+    },
+    {
+      "check_id": "TITLE_LENGTH",
+      "url": "/defects/title-short.html",
+      "note": "Title is 11 characters (< 30)."
+    },
+    {
+      "check_id": "TITLE_MISSING",
+      "url": "/defects/title-missing.html",
+      "note": "No <title>."
+    },
+    {
+      "check_id": "TTFB_SLOW",
+      "url": "/defects/slow.html",
+      "note": "_server.json delays headers by 1300 ms (> 800)."
+    },
+    {
+      "check_id": "VIEWPORT_MISSING",
+      "url": "/defects/viewport-missing.html",
+      "note": "No viewport meta."
+    }
+  ],
+  "not_exercised": [
+    {
+      "check_id": "MIXED_CONTENT",
+      "reason": "Needs an HTTPS page that loads http:// resources; the fixture server speaks plain HTTP."
+    },
+    {
+      "check_id": "ROBOTS_MISSING",
+      "reason": "The fixture needs a robots.txt for the AI-bot, sitemap and blocked-URL checks. Covered by the bare-site integration test."
+    },
+    {
+      "check_id": "SITEMAP_MISSING",
+      "reason": "The fixture needs a sitemap for the orphan, noindex and blocked-URL checks. Covered by the bare-site integration test."
+    }
+  ]
+}

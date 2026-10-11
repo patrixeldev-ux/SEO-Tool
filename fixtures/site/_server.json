@@ -1,0 +1,31 @@
+{
+  "/server-error.html": {
+    "status": 500
+  },
+  "/redir-single": {
+    "redirect_to": "/redir-target.html"
+  },
+  "/redir-chain-a": {
+    "redirect_to": "/redir-chain-b"
+  },
+  "/redir-chain-b": {
+    "redirect_to": "/chain-final.html"
+  },
+  "/redir-loop-a": {
+    "redirect_to": "/redir-loop-b"
+  },
+  "/redir-loop-b": {
+    "redirect_to": "/redir-loop-a"
+  },
+  "/defects/xrobots-noindex.html": {
+    "headers": {
+      "X-Robots-Tag": "noindex"
+    }
+  },
+  "/defects/slow.html": {
+    "delay_ms": 1300
+  },
+  "/sitemap-extra.xml.gz": {
+    "gzip_of": "sitemap-extra.xml"
+  }
+}

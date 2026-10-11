@@ -19,15 +19,22 @@ dependencies = [
   "argon2-cffi>=23.1",
   "pyjwt>=2.10",
   "idna>=3.10",
+  "httpx[http2]>=0.28",
+  "selectolax>=1.0.0",
+  "trafilatura>=2.3.1",
+  "extruct>=0.18.0",
+  "protego>=0.7.0",
+  "playwright>=1.63.0",
+  "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=8.3",
   "pytest-asyncio>=0.25",
-  "httpx>=0.28",
   "ruff>=0.8",
   "mypy>=1.13",
+  "types-pyyaml>=6.0.12.20260906",
 ]
 
 [build-system]

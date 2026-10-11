@@ -144,3 +144,13 @@ def auth(tokens: dict[str, Any], org_id: str | None = None) -> dict[str, str]:
     if org_id:
         headers["X-Org-Id"] = org_id
     return headers
+
+
+# ---- fixture website --------------------------------------------------------------------------------
+@pytest.fixture(scope="session")
+def fixture_site() -> Iterator[Any]:
+    """The static test website from `fixtures/site/`, served on a random local port."""
+    from searchos.devtools.fixture_server import FixtureServer
+
+    with FixtureServer() as server:
+        yield server
