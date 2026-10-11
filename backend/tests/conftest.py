@@ -32,6 +32,12 @@ TEST_ORIGIN = "http://localhost:5173"
 PASSWORD = "correct horse battery staple"
 
 
+def _default_test_redis_url() -> str:
+    """Same Redis server as REDIS_URL (e.g. the `redis` container), but logical DB 15 so dev data is untouched."""
+    base = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    return make_url(base).set(database="15").render_as_string(hide_password=False)
+
+
 def _admin_dsn(base_url: str) -> str:
     url = make_url(base_url)
     return f"postgresql://{url.username}:{url.password}@{url.host}:{url.port or 5432}/postgres"
@@ -48,7 +54,7 @@ async def _run_admin(base_url: str, sql: str) -> None:
 @pytest.fixture(scope="session")
 def test_env() -> Iterator[dict[str, str]]:
     base_url = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL") or DEFAULT_DB_URL
-    redis_url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+    redis_url = os.environ.get("TEST_REDIS_URL") or _default_test_redis_url()
     db_name = f"searchos_test_{uuid.uuid4().hex[:8]}"
     db_url = make_url(base_url).set(database=db_name).render_as_string(hide_password=False)
 

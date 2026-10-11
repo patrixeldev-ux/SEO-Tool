@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (ruff, mypy, pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: searchos
+          POSTGRES_PASSWORD: searchos
+          POSTGRES_DB: searchos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U searchos -d searchos"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      # CI-only values for throw-away service containers; not real secrets.
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://searchos:searchos@localhost:5432/searchos
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-only-secret-0123456789-0123456789-abcdef
+      CORS_ORIGINS: http://localhost:5173
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Ruff (lint)
+        run: uv run ruff check .
+      - name: Ruff (format)
+        run: uv run ruff format --check .
+      - name: Mypy
+        run: uv run mypy searchos
+      - name: Alembic upgrade on an empty database
+        run: uv run alembic upgrade head
+      - name: Pytest (real Postgres + Redis)
+        run: uv run pytest -q
+
+  web:
+    name: Web (typecheck, vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  compose:
+    name: docker-compose.dev.yml parses
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose -f docker-compose.dev.yml config --quiet

@@ -33,3 +33,4 @@ Thumbs.db
 !.vscode/extensions.json
 *.log
 celerybeat-schedule*
+dump.rdb
