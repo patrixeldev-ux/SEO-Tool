@@ -34,3 +34,6 @@ Thumbs.db
 *.log
 celerybeat-schedule*
 dump.rdb
+
+# Local diagnostics written by scripts/diagnose.ps1
+diagnose.txt

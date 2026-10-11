@@ -40,6 +40,17 @@ The defaults in `.env.example` are fine for local development. Nothing else need
 
 ## 3. Start everything
 
+**Easiest way (one command):** with Docker Desktop running, from the project folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\dev-up.ps1
+```
+
+It checks Docker and ports, builds and starts everything, creates the demo account, waits until the app answers
+and opens http://localhost:5173. If anything fails it writes `diagnose.txt` (logs of every container) in the
+project folder. The manual steps below do the same thing by hand.
+
+
 ```powershell
 docker compose -f docker-compose.dev.yml up --build
 ```
@@ -51,7 +62,7 @@ The first run builds the images and installs dependencies (a few minutes). When 
 | web | http://localhost:5173 (Vite dev server, hot reload) |
 | api | http://localhost:8000 (interactive docs at http://localhost:8000/docs) |
 | worker, beat | Celery worker and scheduler (no URL; watch their logs) |
-| postgres, redis | `localhost:5432`, `localhost:6379` (bound to 127.0.0.1 only) |
+| postgres, redis | `localhost:55432`, `localhost:56379` (bound to 127.0.0.1 only; unusual ports on purpose so they don't clash) |
 
 The `api` container runs `alembic upgrade head` on every start, so the database schema is always current.
 Stop with `Ctrl+C`; `docker compose -f docker-compose.dev.yml down` removes the containers (data is kept) and
@@ -184,7 +195,8 @@ From `web\`: `pnpm typecheck`, `pnpm test`, `pnpm build`.
 
 | Symptom | Fix |
 |---|---|
-| `port is already allocated` on 5432 / 6379 / 8000 / 5173 | Stop the other program, or set `POSTGRES_PORT` / `REDIS_PORT` in `.env`. |
+| `port is already allocated` on 8000 / 5173 (often another project's containers, e.g. Agency OS) | `scripts\dev-up.ps1` names the container; stop it with `docker stop <name>`. For Postgres/Redis change `POSTGRES_PORT` / `REDIS_PORT` in `.env`. |
+| Anything else | Run `powershell -ExecutionPolicy Bypass -File scripts\diagnose.ps1` and share `diagnose.txt`. |
 | Web page loads but every request fails with a CORS error | `CORS_ORIGINS` in `.env` must contain the exact origin you browse to (default `http://localhost:5173`). Restart the stack after editing. |
 | `JWT_SECRET ... at least 32 characters` or `Field required` on API start | `.env` is missing or incomplete. Re-copy it from `.env.example`. |
 | You are logged out right after login | Browse via `http://localhost:5173` (not `127.0.0.1`) so the session cookie, which is set for `localhost`, is sent. |
