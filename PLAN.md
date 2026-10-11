@@ -115,11 +115,11 @@ search-os/
 | docs/LOCAL_TESTING.md | create | how to run |
 
 - [x] 0.1 Monorepo skeleton, README, .gitignore, .editorconfig, LICENSE placeholder (proprietary). — Done when: tree matches "Repo layout".
-- [ ] 0.2 Backend app factory, `pydantic-settings` config, `/health` and `/version`; ruff/mypy/pytest config. — Done when: `uv run pytest` passes, `/health` returns 200.
-- [ ] 0.3 Models + first migration: `orgs`, `users`, `memberships(role)`, `sites(org_id, domain, display_name, settings jsonb, autopilot_enabled bool default false)`, `jobs(type, status, progress, error, payload, result)`. — Done when: `alembic upgrade head` works on an empty DB.
-- [ ] 0.4 Auth: register (creates org + owner), login, refresh (rotation + reuse detection), logout; role dependency `require_role()`. — Done when: tests cover happy path, wrong password, expired/reused refresh token.
-- [ ] 0.5 Sites CRUD scoped to org; domain normalisation (lowercase, strip scheme/`www.` stored separately, punycode). — Done when: a user can't read another org's site (test).
-- [ ] 0.6 Celery worker + beat on Redis; `jobs` row updated by tasks; `GET /jobs/{id}`. — Done when: a demo task goes queued → running → done in a test.
+- [x] 0.2 Backend app factory, `pydantic-settings` config, `/health` and `/version`; ruff/mypy/pytest config. — Done when: `uv run pytest` passes, `/health` returns 200.
+- [x] 0.3 Models + first migration: `orgs`, `users`, `memberships(role)`, `sites(org_id, domain, display_name, settings jsonb, autopilot_enabled bool default false)`, `jobs(type, status, progress, error, payload, result)`. — Done when: `alembic upgrade head` works on an empty DB.
+- [x] 0.4 Auth: register (creates org + owner), login, refresh (rotation + reuse detection), logout; role dependency `require_role()`. — Done when: tests cover happy path, wrong password, expired/reused refresh token.
+- [x] 0.5 Sites CRUD scoped to org; domain normalisation (lowercase, strip scheme/`www.` stored separately, punycode). — Done when: a user can't read another org's site (test).
+- [x] 0.6 Celery worker + beat on Redis; `jobs` row updated by tasks; `GET /jobs/{id}`. — Done when: a demo task goes queued → running → done in a test.
 - [ ] 0.7 `docker-compose.dev.yml`: postgres, redis, api (reload), worker, beat, web (vite). `.env.example` documented. — Done when: `docker compose -f docker-compose.dev.yml up` serves web on :5173 and API on :8000 on Windows.
 - [ ] 0.8 Web shell: login/register, org switcher, sites list/create, empty nav for Audit, Search Console, AI Visibility, Actions, Experiments, Content, Reports, Settings; API client with silent refresh; light/dark. — Done when: register → create site works in browser.
 - [ ] 0.9 CI: ruff, mypy, pytest (Postgres + Redis services), web typecheck + vitest + build. — Done when: CI green on the PR.
@@ -228,3 +228,8 @@ search-os/
 (Executor appends one line per completed step or deviation.)
 - 2026-10-11 Opus: plan created.
 - 2026-10-11 Sonnet: 0.1 done — monorepo tree, README, .gitignore, .editorconfig, .gitattributes (LF), proprietary LICENSE placeholder
+- 2026-10-11 Sonnet: 0.2 done — FastAPI app factory (uvicorn --factory), pydantic-settings (secrets required, no defaults), /health /health/ready /version, ruff+mypy+pytest config
+- 2026-10-11 Sonnet: 0.3 done — orgs/users/memberships/sites/jobs + refresh_tokens (needed by 0.4); async Alembic env; initial migration verified up/down/up and 'alembic check' test
+- 2026-10-11 Sonnet: 0.4 done — register/login/refresh(rotation+family reuse detection)/logout/me; argon2id; hashed refresh tokens; require_role(); desktop body-token mode via X-Client-Type; 32 auth/role tests
+- 2026-10-11 Sonnet: 0.5 done — sites CRUD via OrgContext (org scoping in dependency, 404 across orgs); domain normalisation incl. punycode; ports/IPs rejected; org list/create for the switcher
+- 2026-10-11 Sonnet: 0.6 done — Celery worker+beat on Redis (celery -A searchos.worker.app), run_job lifecycle helper, GET /jobs/{id}, POST /jobs/demo (non-prod); test drives a real in-process worker queued->running->done; beat purges expired refresh tokens; seed_demo
