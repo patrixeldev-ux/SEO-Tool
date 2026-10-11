@@ -93,10 +93,41 @@ jobs:
       - run: pnpm build
 
   compose:
-    name: docker-compose.dev.yml parses
+    name: Docker dev stack boots (build, migrate, seed, login, web)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: cp .env.example .env
       - run: docker compose -f docker-compose.dev.yml config --quiet
+      - name: Build and start the stack exactly as the owner runs it
+        run: docker compose -f docker-compose.dev.yml up -d --build
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:8000/health && exit 0
+            sleep 5
+          done
+          docker compose -f docker-compose.dev.yml logs api
+          exit 1
+      - name: Seed demo account and log in
+        run: |
+          docker compose -f docker-compose.dev.yml exec -T api python -m searchos.seed_demo
+          curl -fsS -X POST http://localhost:8000/auth/login \
+            -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
+            -d '{"email":"demo@example.com","password":"demo-password-123"}' | grep -q access_token
+      - name: Wait for web dev server
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:5173/ | grep -q '<div id="root"' && exit 0
+            sleep 5
+          done
+          docker compose -f docker-compose.dev.yml logs web
+          exit 1
+      - name: Worker and beat are running
+        run: |
+          docker compose -f docker-compose.dev.yml ps --status running --services | tee running.txt
+          for s in postgres redis api worker beat web; do grep -qx "$s" running.txt || { docker compose -f docker-compose.dev.yml logs "$s"; exit 1; }; done
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.dev.yml logs --tail=200
