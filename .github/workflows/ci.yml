@@ -140,6 +140,30 @@ jobs:
             python -m searchos.dev_crawl_fixture --email demo@example.com --inline --page-limit 100 | tee audit.txt
           grep -q "^Done: " audit.txt
           grep -q "JS rendering check: ran on" audit.txt
+      - name: Action plan API works after the audit (no AI key set, so value actions wait for AI)
+        run: |
+          TOKEN=$(curl -fsS -X POST http://localhost:8000/auth/login \
+            -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
+            -d '{"email":"demo@example.com","password":"demo-password-123"}' | jq -r .access_token)
+          SITE_ID=$(curl -fsS http://localhost:8000/sites -H "Authorization: Bearer $TOKEN" | jq -r '.[] | select(.domain=="fixture.example") | .id')
+          test -n "$SITE_ID"
+          # The audit queues a plan job for the worker; give it up to 90 seconds.
+          for i in $(seq 1 45); do
+            N=$(curl -fsS "http://localhost:8000/sites/$SITE_ID/actions" -H "Authorization: Bearer $TOKEN" | jq 'length')
+            [ "$N" -gt 0 ] && break
+            sleep 2
+          done
+          echo "actions after the audit: $N"
+          test "$N" -gt 0
+          SUMMARY=$(curl -fsS "http://localhost:8000/sites/$SITE_ID/actions/summary" -H "Authorization: Bearer $TOKEN")
+          echo "$SUMMARY" | jq -c '{total, by_status, by_risk, needs_ai, ai}'
+          test "$(echo "$SUMMARY" | jq '.by_risk | length')" = "3"
+          test "$(echo "$SUMMARY" | jq -r .ai.configured)" = "false"
+          test "$(echo "$SUMMARY" | jq .needs_ai)" -gt 0
+          test "$(curl -fsS "http://localhost:8000/sites/$SITE_ID/actions?status=needs_ai" -H "Authorization: Bearer $TOKEN" | jq '[.[] | select(.proposed_value != null)] | length')" = "0"
+          curl -fsS "http://localhost:8000/sites/$SITE_ID/actions/export.csv" -H "Authorization: Bearer $TOKEN" | head -1 | grep -q "type"
+          curl -fsS -X POST "http://localhost:8000/sites/$SITE_ID/actions/replan" -H "Authorization: Bearer $TOKEN" | jq -e '.type == "plan"'
+          curl -fsS http://localhost:8000/ai/status -H "Authorization: Bearer $TOKEN" | jq -e '.configured == false and .anthropic_key_present == false'
       - name: Integrations report "Google isn't set up yet" without any Google env vars
         run: |
           BODY=$(curl -fsS http://localhost:8000/integrations/status)

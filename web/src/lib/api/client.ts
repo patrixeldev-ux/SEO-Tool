@@ -1,19 +1,26 @@
 import type {
+  ActionFilters,
+  ActionSummary,
   AiReport,
   AiReportImport,
   AiReportSource,
+  AiSettings,
   Audit,
   AuditChanges,
   AuditIssues,
   AuditPages,
   Connection,
   CtrCurve,
+  BulkOp,
+  BulkResult,
   GoogleProperties,
+  Handoff,
   IntegrationStatus,
   MeResponse,
   Opportunities,
   Org,
   PageDetail,
+  PlanAction,
   RegisterInput,
   SearchCoverage,
   SearchPageDetail,
@@ -368,6 +375,72 @@ export class ApiClient {
     return this.request<void>(`/sites/${siteId}/ai-reports/imports/${importId}`, { method: "DELETE" });
   }
 
+  // ---- sites (settings) ----
+  updateSite(siteId: string, changes: { display_name?: string; autopilot_enabled?: boolean }): Promise<Site> {
+    return this.request<Site>(`/sites/${siteId}`, { method: "PATCH", body: changes });
+  }
+
+  // ---- the action plan ----
+  listActions(siteId: string, filters: ActionFilters = {}): Promise<PlanAction[]> {
+    const query = new URLSearchParams({ limit: "2000" });
+    for (const s of filters.status ?? []) query.append("status", s);
+    for (const r of filters.risk_class ?? []) query.append("risk_class", r);
+    for (const t of filters.type ?? []) query.append("type", t);
+    if (filters.manual !== undefined) query.set("manual", String(filters.manual));
+    return this.request<PlanAction[]>(`/sites/${siteId}/actions?${query.toString()}`);
+  }
+
+  actionSummary(siteId: string): Promise<ActionSummary> {
+    return this.request<ActionSummary>(`/sites/${siteId}/actions/summary`);
+  }
+
+  replan(siteId: string): Promise<SyncJob> {
+    return this.request<SyncJob>(`/sites/${siteId}/actions/replan`, { method: "POST" });
+  }
+
+  decideAction(siteId: string, actionId: string, op: "approve" | "reopen" | "done" | "restore"): Promise<PlanAction> {
+    return this.request<PlanAction>(`/sites/${siteId}/actions/${actionId}/${op}`, { method: "POST" });
+  }
+
+  rejectAction(siteId: string, actionId: string, reason: string): Promise<PlanAction> {
+    return this.request<PlanAction>(`/sites/${siteId}/actions/${actionId}/reject`, {
+      method: "POST",
+      body: { reason },
+    });
+  }
+
+  editAction(
+    siteId: string,
+    actionId: string,
+    changes: { proposed_value?: unknown; checklist_done?: string[] },
+  ): Promise<PlanAction> {
+    return this.request<PlanAction>(`/sites/${siteId}/actions/${actionId}`, { method: "PATCH", body: changes });
+  }
+
+  bulkActions(siteId: string, ids: string[], op: BulkOp, reason?: string): Promise<BulkResult> {
+    return this.request<BulkResult>(`/sites/${siteId}/actions/bulk`, {
+      method: "POST",
+      body: reason === undefined ? { ids, op } : { ids, op, reason },
+    });
+  }
+
+  actionsCsv(siteId: string): Promise<Blob> {
+    return this.request<Blob>(`/sites/${siteId}/actions/export.csv`, { as: "blob" });
+  }
+
+  handoff(siteId: string, includeProposed: boolean): Promise<Handoff> {
+    return this.request<Handoff>(`/sites/${siteId}/actions/handoff?include_proposed=${includeProposed}`);
+  }
+
+  // ---- AI settings ----
+  aiSettings(): Promise<AiSettings> {
+    return this.request<AiSettings>("/ai/status");
+  }
+
+  setAiBudget(monthlyTokenBudget: number | null): Promise<AiSettings> {
+    return this.request<AiSettings>("/ai/budget", { method: "PUT", body: { monthly_token_budget: monthlyTokenBudget } });
+  }
+
   createOrg(name: string): Promise<Org> {
     return this.request<Org>("/orgs", { method: "POST", body: { name } });
   }
@@ -375,6 +448,10 @@ export class ApiClient {
 
 function describeError(status: number, detail: unknown): string {
   if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
   if (Array.isArray(detail) && detail.length > 0) {
     // FastAPI validation errors: [{ loc: [...], msg: "..." }]
     const first = detail[0] as { msg?: string; loc?: unknown[] };

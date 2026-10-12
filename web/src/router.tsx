@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { ActionsIndexPage, SiteActionsPage } from "@/pages/actions";
 import { AuditIndexPage, SiteAuditPage } from "@/pages/audit";
 import { ComingSoonPage } from "@/pages/coming-soon";
 import { GoogleSetupPage } from "@/pages/help";
@@ -31,7 +32,15 @@ const siteAuditRoute = createRoute({ getParentRoute: () => appRoute, path: "/aud
 const searchIndexRoute = createRoute({ getParentRoute: () => appRoute, path: "/search-console", component: SearchConsoleIndexPage });
 const siteSearchRoute = createRoute({ getParentRoute: () => appRoute, path: "/search-console/$siteId", component: SiteSearchPage });
 const googleSetupRoute = createRoute({ getParentRoute: () => appRoute, path: "/help/google-setup", component: GoogleSetupPage });
-const settingsRoute = createRoute({ getParentRoute: () => appRoute, path: "/settings", component: SettingsPage });
+const actionsIndexRoute = createRoute({ getParentRoute: () => appRoute, path: "/actions", component: ActionsIndexPage });
+const siteActionsRoute = createRoute({ getParentRoute: () => appRoute, path: "/actions/$siteId", component: SiteActionsPage });
+const settingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/settings",
+  component: SettingsPage,
+  // `tab=ai` opens Settings > AI; the Google return flow adds `google` and `reason`.
+  validateSearch: (search: Record<string, unknown>) => search as { tab?: string; google?: string; reason?: string },
+});
 
 function placeholder(path: string, title: string, description: string, phase: string) {
   return createRoute({
@@ -43,7 +52,6 @@ function placeholder(path: string, title: string, description: string, phase: st
 
 const placeholderRoutes = [
   placeholder("/ai-visibility", "AI Visibility", "How often AI answer engines mention and cite your brand, with confidence intervals.", "Phase 6"),
-  placeholder("/actions", "Actions", "The prioritised plan of fixes, with approve, edit and reject.", "Phase 3"),
   placeholder("/experiments", "Experiments", "Did each change actually help? Treated pages versus matched controls.", "Phase 5"),
   placeholder("/content", "Content", "Briefs, drafts and refreshes backed by SERP research.", "Phase 7"),
   placeholder("/reports", "Reports", "White-label monthly reports for you and your clients.", "Phase 8"),
@@ -60,6 +68,8 @@ export const routeTree = rootRoute.addChildren([
     searchIndexRoute,
     siteSearchRoute,
     googleSetupRoute,
+    actionsIndexRoute,
+    siteActionsRoute,
     settingsRoute,
     ...placeholderRoutes,
   ]),

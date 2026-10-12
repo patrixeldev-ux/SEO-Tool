@@ -428,3 +428,109 @@ export interface AiReport {
   top_pages: { key: string; values: Record<string, number> }[];
   top_queries: { key: string; values: Record<string, number> }[];
 }
+
+// ---- Actions (the plan) -----------------------------------------------------------------------------
+export type ActionStatus =
+  | "proposed"
+  | "needs_ai"
+  | "no_suggestion"
+  | "approved"
+  | "deployed"
+  | "rejected"
+  | "rolled_back"
+  | "manual_done"
+  | "obsolete";
+export type RiskClass = "auto" | "approve" | "manual";
+
+export interface PlanAction {
+  id: string;
+  site_id: string;
+  type: string;
+  type_label: string;
+  risk_class: RiskClass;
+  target_url: string | null;
+  field: string;
+  current_value: unknown;
+  proposed_value: unknown;
+  original_value: unknown;
+  edited_by_user: boolean;
+  evidence: Record<string, unknown>;
+  expected_gain: number;
+  confidence: number;
+  effort: number;
+  priority: number;
+  status: ActionStatus;
+  created_by: string;
+  source_kind: string;
+  sources: string[];
+  generation: Record<string, unknown>;
+  checklist_done: string[];
+  reject_reason: string | null;
+  decided_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AiStatus {
+  configured: boolean;
+  provider: string | null;
+  model: string | null;
+  selected_by: string | null;
+  anthropic_key_present: boolean;
+  gemini_key_present: boolean;
+  gemini_model_set: boolean;
+  problem: string | null;
+}
+
+export interface AiSettings extends AiStatus {
+  monthly_token_budget: number;
+  budget_is_custom: boolean;
+  tokens_used_this_month: number;
+  month_starts: string;
+  usage_by_purpose: { purpose: string; calls: number; tokens: number }[];
+}
+
+export interface PlanRun {
+  id: string;
+  status: string;
+  created_at: string;
+  finished_at: string | null;
+  trigger: string | null;
+  result: Record<string, unknown> | null;
+  error: string | null;
+}
+
+export interface ActionSummary {
+  total: number;
+  by_status: Partial<Record<ActionStatus, number>>;
+  by_risk: Partial<Record<RiskClass, number>>;
+  by_type: Record<string, number>;
+  needs_ai: number;
+  gain_measured: number;
+  gain_prior: number;
+  gain_approved: number;
+  last_plan: PlanRun | null;
+  plan_running: boolean;
+  ai: AiStatus;
+  autopilot_enabled: boolean;
+}
+
+export type BulkOp = "approve" | "reject" | "reopen" | "done";
+export interface BulkResult {
+  updated: PlanAction[];
+  failed: { id: string; error: string }[];
+}
+
+export interface Handoff {
+  text: string;
+  count: number;
+  generated_on: string;
+  includes_unapproved: boolean;
+}
+
+export interface ActionFilters {
+  status?: ActionStatus[];
+  risk_class?: RiskClass[];
+  type?: string[];
+  manual?: boolean;
+}

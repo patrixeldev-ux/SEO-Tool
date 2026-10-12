@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 
 import { ApiClient } from "@/lib/api/client";
+import { createActionsState, handleActionsRoute } from "@/test/fake-actions";
 import { createSearchState, handleSearchRoute } from "@/test/fake-search";
 import type {
   Audit,
@@ -41,6 +42,7 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
     onPoll: null as ((list: Audit[]) => void) | null,
   };
   const search = createSearchState();
+  const actions = createActionsState();
   const calls: { method: string; path: string; headers: Record<string, string>; body?: unknown }[] = [];
 
   const tokenBody = () => ({
@@ -106,6 +108,20 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
       sitesByOrg.get(orgId)?.push(site);
       return json(site, 201);
     }
+    const siteMatch = url.pathname.match(/^\/sites\/([^/]+)$/);
+    if (siteMatch && method === "PATCH") {
+      const site = Array.from(sitesByOrg.values()).flat().find((s) => s.id === siteMatch[1]);
+      if (!site) return json({ detail: "Site not found" }, 404);
+      if ("autopilot_enabled" in body && orgs[0]!.role !== "owner" && orgs[0]!.role !== "admin") {
+        return json({ detail: "Only admins can change autopilot" }, 403);
+      }
+      Object.assign(site, body);
+      return json(site);
+    }
+    const actionsResponse = handleActionsRoute(actions, url, method, body, {
+      get: () => Array.from(sitesByOrg.values()).flat().find((s) => url.pathname.includes(`/sites/${s.id}/`))?.autopilot_enabled ?? false,
+    });
+    if (actionsResponse) return actionsResponse;
     const searchResponse = handleSearchRoute(search, url, method, body, init?.body);
     if (searchResponse) return searchResponse;
     const siteAudits = url.pathname.match(/^\/sites\/([^/]+)\/audits$/);
@@ -168,5 +184,5 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
   });
 
   const client = new ApiClient({ baseUrl: "http://api.test", fetch: fetchMock as unknown as typeof fetch });
-  return { client, fetchMock, calls, orgs, sitesByOrg, audits, auditData, search };
+  return { client, fetchMock, calls, orgs, sitesByOrg, audits, auditData, search, actions };
 }
