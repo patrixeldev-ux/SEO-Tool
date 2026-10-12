@@ -34,6 +34,8 @@ class Org(IdMixin, CreatedAtMixin, Base):
     __tablename__ = "orgs"
 
     name: Mapped[str] = mapped_column(sa.String(120), nullable=False)
+    # Monthly AI token budget; NULL = the default (LLM_DEFAULT_MONTHLY_TOKEN_BUDGET, 2,000,000).
+    llm_token_budget: Mapped[int | None] = mapped_column(sa.Integer)
 
 
 class Membership(IdMixin, CreatedAtMixin, Base):

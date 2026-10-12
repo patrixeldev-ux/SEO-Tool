@@ -61,6 +61,7 @@ def page_values(crawl_id: uuid.UUID, r: PageRecord) -> dict[str, Any]:
             "hreflang": r.hreflang,
             "word_count": r.word_count,
             "main_text_method": r.main_text_method,
+            "main_text": r.main_text or None,
             "structured_data": r.structured_data,
             "in_sitemap": r.in_sitemap,
             "extra": r.extra,

@@ -1,3 +1,4 @@
+from searchos.models.action import Action, LlmUsage
 from searchos.models.base import Base
 from searchos.models.crawl import AuditSnapshot, Crawl, CrawlStatus, Issue, Link, Page
 from searchos.models.integration import ConnectionStatus, IntegrationConnection, Provider
@@ -19,6 +20,7 @@ from searchos.models.user import User
 
 __all__ = [
     "ROLE_RANK",
+    "Action",
     "AiReportImport",
     "AiReportRow",
     "AuditSnapshot",
@@ -34,6 +36,7 @@ __all__ = [
     "Job",
     "JobStatus",
     "Link",
+    "LlmUsage",
     "Membership",
     "Opportunity",
     "Org",
