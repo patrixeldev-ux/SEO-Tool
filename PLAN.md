@@ -157,6 +157,20 @@ search-os/
 - [ ] 3.6 UI: action plan board (by priority), diff view current → proposed, approve / edit / reject in bulk, autopilot ON/OFF per site (default OFF).
 - Done when (phase): on the fixture site + one real site, plan generates, every proposed value passes validators (test), approvals change status.
 
+### Phase 3 planner decisions (Opus, 2026-10-12)
+- **LLM layer** `searchos/llm/`: `LLMProvider` protocol (`generate_json(system, user, schema) -> dict`), adapters `AnthropicProvider` (official `anthropic` SDK, env `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` default `claude-sonnet-5-5`) and `GeminiProvider` (official `google-genai` SDK, env `GEMINI_API_KEY`, `GEMINI_MODEL` — no default; required when the key is set), selected by `LLM_PROVIDER=anthropic|gemini` (default: whichever key is present, Anthropic first). `FakeProvider` for tests. Always request structured JSON; validate with Pydantic. Per-org monthly token budget setting (default 2M tokens) enforced before every call; usage logged in `llm_usage`.
+- **No AI key configured** → the planner still creates every action; value-type actions get `proposed_value = null`, `status = needs_ai` and a UI banner "Add an AI key to generate suggestions (Settings → AI)". Manual and technical actions work fully. The app must never fail without a key.
+- **Prompt-injection guard**: page text is untrusted. Wrap it in delimited blocks, tell the model it is data, strip it to main text ≤ 3,000 chars, and rely on validators — the model's output is only ever a string/JSON value we validate, never an instruction we execute.
+- **Validators** (pure functions, `searchos/planner/validators.py`, exhaustive unit tests): title 30–60 chars, no ALL CAPS, no keyword stuffing (same word > 2 times), unique across the site's current titles + other proposals; meta 120–155 chars, unique; alt text 5–125 chars, must not start with "image of"/"picture of", not equal to filename; JSON-LD parses, `@context` schema.org, type in our supported set, all required props from `audit/schema_rules.py` present, no props whose values aren't present in the page text (no invented ratings/prices/reviews — hard rule); internal links: target indexable 200, not already linked from source, anchor text 2–8 words present verbatim in source main text.
+- **Topical overlap** for internal links: TF-IDF cosine over page main text, computed locally with numpy (no embedding API, deterministic). Threshold calibrated on the fixture site and documented; max 3 suggestions per source page.
+- **Effort** fixed table 1–5 per action type in code; **risk class** fixed per action type per the Decisions section (auto/approve/manual); **never-automated** list enforced in code with a test.
+- **Expected gain** units = estimated extra clicks per 28 days; technical-fix priors documented in `docs/METHODOLOGY.md` (new section "Action priority") as explicit numbers with "prior, not measured" label.
+- **Dedupe**: one open action per (site, type, target_url, field); re-planning updates evidence instead of duplicating; rejected actions aren't re-proposed for 90 days unless evidence changes materially (score ↑ 50 %).
+- **Plan triggers**: after each audit and after each GSC opportunity recompute; plus a "Re-plan" button.
+- **Edits**: user edits run through the same validators; an edited action records `edited_by_user = true` and keeps the AI original.
+- **Autopilot switch** in Phase 3 only stores the setting and shows "Deploying arrives in Phase 4"; nothing is deployed in this phase.
+- **Export**: CSV and a copy-paste "developer handoff" (per page: field, current, proposed) for owners without a deployer.
+
 ## Phase 4 — Execute: server-side deployers
 - [ ] 4.1 Site ownership verification (DNS TXT or `/searchos-verify-<token>.txt`) required before any deploy.
 - [ ] 4.2 `deployments` table: action_id, method, payload, before snapshot, after snapshot, deployed_at, reverted_at.
