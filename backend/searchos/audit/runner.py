@@ -52,11 +52,13 @@ def run_audit(audit: AuditInput, *, skip: frozenset[str] = frozenset()) -> Audit
         score_inputs.append(
             CheckScoreInput(check_id, info.category, info.severity, outcome.applicable, len(outcome.failures))
         )
+    counts = summarise(issues)
+    # Every check that ran, with how many units it looked at: lets the UI list the checks that passed.
+    counts["checks"] = {
+        check_id: {"applicable": o.applicable, "failing": len(o.failures)} for check_id, o in outcomes.items()
+    }
     return AuditResult(
-        issues=issues,
-        checks=outcomes,
-        scores=compute_scores(score_inputs),
-        issue_counts=summarise(issues),
+        issues=issues, checks=outcomes, scores=compute_scores(score_inputs), issue_counts=counts
     )
 
 
