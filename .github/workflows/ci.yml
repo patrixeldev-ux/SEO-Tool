@@ -47,6 +47,8 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
       JWT_SECRET: ci-only-secret-0123456789-0123456789-abcdef
       CORS_ORIGINS: http://localhost:5173
+      # The real-browser tests must run here, never silently skip.
+      REQUIRE_BROWSER: "1"
     defaults:
       run:
         working-directory: backend
@@ -59,6 +61,8 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: uv sync --frozen
+      - name: Install Chromium (JS rendering check)
+        run: uv run playwright install --with-deps chromium
       - name: Ruff (lint)
         run: uv run ruff check .
       - name: Ruff (format)
@@ -67,7 +71,9 @@ jobs:
         run: uv run mypy searchos
       - name: Alembic upgrade on an empty database
         run: uv run alembic upgrade head
-      - name: Pytest (real Postgres + Redis)
+      - name: docs/CHECKS.md is up to date
+        run: uv run python -m searchos.audit.gen_docs --check
+      - name: Pytest (real Postgres + Redis + Chromium)
         run: uv run pytest -q
 
   web:
@@ -116,6 +122,24 @@ jobs:
           curl -fsS -X POST http://localhost:8000/auth/login \
             -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
             -d '{"email":"demo@example.com","password":"demo-password-123"}' | grep -q access_token
+      - name: Audits API answers (empty list for a new site)
+        run: |
+          TOKEN=$(curl -fsS -X POST http://localhost:8000/auth/login \
+            -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
+            -d '{"email":"demo@example.com","password":"demo-password-123"}' | jq -r .access_token)
+          SITE_ID=$(curl -fsS -X POST http://localhost:8000/sites \
+            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            -d '{"domain":"ci-audit-check.example.com"}' | jq -r .id)
+          test "$SITE_ID" != "null" -a -n "$SITE_ID"
+          BODY=$(curl -fsS "http://localhost:8000/sites/$SITE_ID/audits" -H "Authorization: Bearer $TOKEN")
+          echo "GET /sites/$SITE_ID/audits -> $BODY"
+          test "$(echo "$BODY" | jq -c .)" = "[]"
+      - name: Audit the fixture site inside the worker image (Chromium works there)
+        run: |
+          docker compose -f docker-compose.dev.yml exec -T worker \
+            python -m searchos.dev_crawl_fixture --email demo@example.com --inline --page-limit 100 | tee audit.txt
+          grep -q "^Done: " audit.txt
+          grep -q "JS rendering check: ran on" audit.txt
       - name: Wait for web dev server
         run: |
           for i in $(seq 1 60); do
