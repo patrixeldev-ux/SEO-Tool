@@ -28,6 +28,14 @@ app.conf.update(
             "task": "searchos.maintenance.purge_refresh_tokens",
             "schedule": crontab(hour=3, minute=15),
         },
+        "gsc-nightly-incremental": {
+            "task": "searchos.gsc.nightly",
+            "schedule": crontab(hour=23, minute=30),
+        },
+        "bing-nightly": {
+            "task": "searchos.bing.nightly",
+            "schedule": crontab(hour=23, minute=45),
+        },
     },
 )
 

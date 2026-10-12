@@ -21,5 +21,7 @@ See [docs/LOCAL_TESTING.md](docs/LOCAL_TESTING.md) (Windows + Docker Desktop ins
 
 ## Status
 
-Phase 0 (foundation) is complete: auth + multi-tenant orgs/sites, background jobs, web shell, CI, local stack.
-Next: Phase 1 (crawler and audit). Track progress in [PLAN.md](PLAN.md#progress-log).
+Phase 0 (foundation), Phase 1 (crawler and audit) and Phase 2 (Search Console, Bing, PageSpeed, opportunities)
+are built; real-account checks for Phase 2 are pending the owner (see [PLAN.md](PLAN.md#progress-log)).
+Connecting Google is optional and explained step by step in [docs/GOOGLE_SETUP.md](docs/GOOGLE_SETUP.md).
+Next: Phase 3.

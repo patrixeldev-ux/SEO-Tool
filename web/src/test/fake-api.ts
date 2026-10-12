@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 
 import { ApiClient } from "@/lib/api/client";
+import { createSearchState, handleSearchRoute } from "@/test/fake-search";
 import type {
   Audit,
   AuditChanges,
@@ -39,6 +40,7 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
     /** Called on every GET of the audit list; lets a test move a running audit forward. */
     onPoll: null as ((list: Audit[]) => void) | null,
   };
+  const search = createSearchState();
   const calls: { method: string; path: string; headers: Record<string, string>; body?: unknown }[] = [];
 
   const tokenBody = () => ({
@@ -54,7 +56,8 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    const isForm = typeof FormData !== "undefined" && init?.body instanceof FormData;
+    const body = init?.body && !isForm ? JSON.parse(String(init.body)) : undefined;
     calls.push({ method, path: url.pathname, headers, body });
 
     if (url.pathname === "/auth/refresh") return loggedIn ? json(tokenBody()) : json({ detail: "Missing refresh token" }, 401);
@@ -72,6 +75,7 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
       loggedIn = false;
       return new Response(null, { status: 204 });
     }
+    if (url.pathname === "/integrations/status") return handleSearchRoute(search, url, method, body, init?.body)!;
     if (!headers["Authorization"]) return json({ detail: "Not authenticated" }, 401);
 
     const orgId = headers["X-Org-Id"] ?? orgs[0]!.id;
@@ -102,6 +106,8 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
       sitesByOrg.get(orgId)?.push(site);
       return json(site, 201);
     }
+    const searchResponse = handleSearchRoute(search, url, method, body, init?.body);
+    if (searchResponse) return searchResponse;
     const siteAudits = url.pathname.match(/^\/sites\/([^/]+)\/audits$/);
     if (siteAudits) {
       const siteId = siteAudits[1]!;
@@ -162,5 +168,5 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
   });
 
   const client = new ApiClient({ baseUrl: "http://api.test", fetch: fetchMock as unknown as typeof fetch });
-  return { client, fetchMock, calls, orgs, sitesByOrg, audits, auditData };
+  return { client, fetchMock, calls, orgs, sitesByOrg, audits, auditData, search };
 }

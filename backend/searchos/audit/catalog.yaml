@@ -278,6 +278,46 @@
     Turn on page caching or a CDN, upgrade slow hosting, and look for heavy database queries or plugins on
     this page.
 
+- id: CWV_LCP_POOR
+  category: performance
+  severity: high
+  title: Largest Contentful Paint is poor (over 4 seconds)
+  applies_to: psi_lcp_pages
+  why_it_matters: >-
+    Largest Contentful Paint (LCP) is how long the main content takes to appear. Over 4 seconds is rated "poor"
+    by Google's Core Web Vitals, which are a ranking signal and a strong predictor of visitors leaving. Taken from
+    real Chrome users (field data) when Google has enough of them for this page, otherwise from a single
+    simulated load (lab). Only pages with PageSpeed Insights data are checked.
+  how_to_fix: >-
+    Compress and properly size the hero image or main text block, serve it from a CDN, preload it, remove
+    render-blocking scripts and styles above the fold, and speed up the server response.
+
+- id: CWV_INP_POOR
+  category: performance
+  severity: high
+  title: Interaction to Next Paint is poor (over 500 ms)
+  applies_to: psi_inp_pages
+  why_it_matters: >-
+    Interaction to Next Paint (INP) measures how quickly the page reacts to clicks and taps. Over 500 ms is rated
+    "poor" by Google's Core Web Vitals. It is only available from real-user (field) data, so it is checked only
+    for pages Google has enough visitor data for; it is never estimated from a lab test.
+  how_to_fix: >-
+    Break up long JavaScript tasks, remove or defer heavy third-party scripts (chat widgets, tag managers,
+    trackers), and avoid expensive work in click and input handlers.
+
+- id: CWV_CLS_POOR
+  category: performance
+  severity: high
+  title: Cumulative Layout Shift is poor (over 0.25)
+  applies_to: psi_cls_pages
+  why_it_matters: >-
+    Cumulative Layout Shift (CLS) measures how much the page jumps around while loading. Over 0.25 is rated
+    "poor" by Google's Core Web Vitals and makes visitors misclick. Taken from real Chrome users (field data)
+    when available, otherwise from a single simulated load (lab).
+  how_to_fix: >-
+    Give images, videos, ads and embeds explicit width and height, reserve space for banners and late-loading
+    content, and avoid inserting content above what is already visible.
+
 - id: SCHEMA_PARSE_ERROR
   category: structured_data
   severity: high

@@ -140,6 +140,27 @@ jobs:
             python -m searchos.dev_crawl_fixture --email demo@example.com --inline --page-limit 100 | tee audit.txt
           grep -q "^Done: " audit.txt
           grep -q "JS rendering check: ran on" audit.txt
+      - name: Integrations report "Google isn't set up yet" without any Google env vars
+        run: |
+          BODY=$(curl -fsS http://localhost:8000/integrations/status)
+          echo "GET /integrations/status -> $BODY"
+          test "$(echo "$BODY" | jq -r .google.configured)" = "false"
+          echo "$BODY" | jq -r .google.message | grep -q "isn't set up yet"
+      - name: Search data API answers on synthetic Search Console data (no Google needed)
+        run: |
+          docker compose -f docker-compose.dev.yml exec -T api python -m searchos.dev_seed_gsc --email demo@example.com | tee seed.txt
+          grep -q "^Seeded " seed.txt
+          TOKEN=$(curl -fsS -X POST http://localhost:8000/auth/login \
+            -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
+            -d '{"email":"demo@example.com","password":"demo-password-123"}' | jq -r .access_token)
+          SITE_ID=$(curl -fsS http://localhost:8000/sites -H "Authorization: Bearer $TOKEN" | jq -r '.[] | select(.domain=="harborandpine.example") | .id')
+          test -n "$SITE_ID"
+          DAYS=$(curl -fsS "http://localhost:8000/sites/$SITE_ID/search/totals?range=16m" -H "Authorization: Bearer $TOKEN" | jq '.series | length')
+          echo "daily totals: $DAYS"
+          test "$DAYS" -gt 400
+          COUNTS=$(curl -fsS "http://localhost:8000/sites/$SITE_ID/search/opportunities" -H "Authorization: Bearer $TOKEN" | jq -c .counts)
+          echo "opportunities: $COUNTS"
+          test "$(echo "$COUNTS" | jq '[.[] | select(. > 0)] | length')" = "4"
       - name: Wait for web dev server
         run: |
           for i in $(seq 1 60); do

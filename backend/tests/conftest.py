@@ -127,6 +127,19 @@ async def session(test_env: dict[str, str]) -> AsyncIterator[AsyncSession]:
         yield s
 
 
+@pytest.fixture
+def google_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Google OAuth client configured (the app otherwise reports "Google isn't set up yet")."""
+    from searchos.core.config import get_settings
+
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "test-client-secret")
+    monkeypatch.setenv("WEB_BASE_URL", "http://web.test")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 # ---- helpers ----------------------------------------------------------------------------------------
 async def register(
     client: AsyncClient, email: str, org_name: str = "Acme Agency", password: str = PASSWORD

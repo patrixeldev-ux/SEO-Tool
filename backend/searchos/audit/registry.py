@@ -54,6 +54,11 @@ def _internal_canonical(p: PageData, a: AuditInput) -> bool:
     return p.is_indexable and bool(p.canonical) and a.is_internal(p.canonical or "")
 
 
+def _psi_value(p: PageData, name: str) -> object:
+    psi = p.extra.get("psi")
+    return psi.get(name) if isinstance(psi, dict) else None
+
+
 # Page populations a check can apply to. The names are the `applies_to` values in catalog.yaml.
 PAGE_POPULATIONS: dict[str, PagePredicate] = {
     "fetched_urls": _fetched,
@@ -68,6 +73,10 @@ PAGE_POPULATIONS: dict[str, PagePredicate] = {
     "article_pages": lambda p, a: p.is_indexable and bool(p.extra.get("is_article")),
     "question_pages": lambda p, a: p.is_indexable and bool(p.extra.get("question_headings")),
     "rendered_pages": lambda p, a: p.is_indexable and p.extra.get("rendered_word_count") is not None,
+    # Core Web Vitals come from PageSpeed Insights results attached to the crawl; no data = not applicable.
+    "psi_lcp_pages": lambda p, a: p.is_indexable and _psi_value(p, "lcp_ms") is not None,
+    "psi_inp_pages": lambda p, a: p.is_indexable and _psi_value(p, "inp_ms") is not None,
+    "psi_cls_pages": lambda p, a: p.is_indexable and _psi_value(p, "cls") is not None,
 }
 SITE_POPULATIONS = frozenset({"site", "homepage"})
 

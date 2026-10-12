@@ -362,4 +362,46 @@ describe("reaching the audit", () => {
     renderApp(api.client, "/actions");
     expect(await screen.findByRole("heading", { name: "Coming in Phase 3" })).toBeInTheDocument();
   });
+
+  it("shows Core Web Vitals per page (field preferred, INP only from real visitors) and lists checks that did not run", async () => {
+    const api = withFinishedAudit();
+    api.auditData.issues.not_run = [
+      {
+        check_id: "CWV_INP_POOR",
+        title: "Poor responsiveness (INP)",
+        severity: "high",
+        category: "performance",
+        reason: "No PageSpeed Insights data: the PageSpeed step did not run for this audit.",
+      },
+    ];
+    api.auditData.page = {
+      ...api.auditData.page!,
+      psi: {
+        lcp_ms: 4600,
+        lcp_source: "field",
+        inp_ms: null,
+        inp_source: null,
+        cls: 0.04,
+        cls_source: "lab",
+        performance_score: 61,
+        error: null,
+        fetched_at: "2026-10-12T10:00:00Z",
+      },
+    };
+    renderApp(api.client, "/audit/s1");
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Checks that did not run (1)")).toBeInTheDocument();
+    expect(screen.getByText(/the PageSpeed step did not run/)).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("tab", { name: "Pages" }));
+    await user.click(await screen.findByRole("button", { name: "https://shop.example.com/a.html" }));
+    const vitals = within(await screen.findByLabelText("Core Web Vitals"));
+    expect(vitals.getByText("4600 ms")).toBeInTheDocument();
+    expect(vitals.getByText("poor · real visitors")).toBeInTheDocument();
+    expect(vitals.getByText("No data")).toBeInTheDocument();
+    expect(vitals.getByText("Only measured on real visitors")).toBeInTheDocument(); // INP is never estimated
+    expect(vitals.getByText("0.040")).toBeInTheDocument();
+    expect(vitals.getByText("good · lab test")).toBeInTheDocument();
+  });
 });

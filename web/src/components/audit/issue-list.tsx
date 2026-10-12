@@ -150,6 +150,19 @@ export function IssueList({ issues, onOpenPage }: { issues: AuditIssues; onOpenP
         </section>
       ))}
 
+      {(issues.not_run?.length ?? 0) > 0 && (
+        <details className="rounded-xl border bg-card px-5 py-3 text-sm">
+          <summary className="cursor-pointer font-medium">Checks that did not run ({issues.not_run?.length})</summary>
+          <ul className="mt-2 space-y-1.5" aria-label="Checks that did not run">
+            {issues.not_run?.map((n) => (
+              <li key={n.check_id} className="text-muted-foreground">
+                <span className="font-medium text-foreground">{n.title}</span>: {n.reason}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {issues.passed.length > 0 && (
         <details className="rounded-xl border bg-card px-5 py-3 text-sm">
           <summary className="cursor-pointer font-medium">Passed checks ({issues.passed.length})</summary>

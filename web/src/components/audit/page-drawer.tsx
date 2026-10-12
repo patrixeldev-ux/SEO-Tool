@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { SeverityBadge } from "@/components/audit/severity-badge";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { LinkInfo, PageDetail } from "@/lib/api/types";
+import type { LinkInfo, PageDetail, PsiResult } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -12,6 +12,67 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words">{children ?? "–"}</dd>
     </div>
+  );
+}
+
+const VITALS_LIMITS = {
+  lcp: { good: 2500, poor: 4000 },
+  inp: { good: 200, poor: 500 },
+  cls: { good: 0.1, poor: 0.25 },
+} as const;
+
+function rating(value: number, kind: keyof typeof VITALS_LIMITS): "good" | "needs work" | "poor" {
+  const limits = VITALS_LIMITS[kind];
+  return value > limits.poor ? "poor" : value > limits.good ? "needs work" : "good";
+}
+
+function Vital({
+  label,
+  value,
+  source,
+  kind,
+}: {
+  label: string;
+  value: number | null;
+  source: string | null;
+  kind: keyof typeof VITALS_LIMITS;
+}) {
+  const text = value === null ? "No data" : kind === "cls" ? value.toFixed(3) : `${Math.round(value)} ms`;
+  return (
+    <div className="rounded-lg border p-3">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 text-lg font-semibold">{text}</dd>
+      <p className="text-xs text-muted-foreground">
+        {value === null
+          ? kind === "inp"
+            ? "Only measured on real visitors"
+            : "Not available"
+          : `${rating(value, kind)} · ${source === "field" ? "real visitors" : "lab test"}`}
+      </p>
+    </div>
+  );
+}
+
+function VitalsSection({ psi }: { psi: PsiResult }) {
+  return (
+    <section aria-label="Core Web Vitals" className="space-y-2">
+      <h3 className="text-sm font-semibold">Core Web Vitals (mobile)</h3>
+      {psi.error ? (
+        <p className="text-sm text-muted-foreground">PageSpeed Insights could not test this page: {psi.error}</p>
+      ) : (
+        <>
+          <dl className="grid grid-cols-3 gap-2">
+            <Vital label="Loading (LCP)" value={psi.lcp_ms} source={psi.lcp_source} kind="lcp" />
+            <Vital label="Responsiveness (INP)" value={psi.inp_ms} source={psi.inp_source} kind="inp" />
+            <Vital label="Layout shift (CLS)" value={psi.cls} source={psi.cls_source} kind="cls" />
+          </dl>
+          <p className="text-xs text-muted-foreground">
+            Real-visitor numbers are preferred; a lab test is used only for loading and layout shift when Google has
+            no visitor data for the page.
+          </p>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -61,6 +122,8 @@ function Body({ page }: { page: PageDetail }) {
           ))}
         </ul>
       </section>
+
+      {page.psi && <VitalsSection psi={page.psi} />}
 
       <section aria-label="Page facts">
         <h3 className="text-sm font-semibold">Details</h3>

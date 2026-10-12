@@ -1,13 +1,29 @@
 import type {
+  AiReport,
+  AiReportImport,
+  AiReportSource,
   Audit,
   AuditChanges,
   AuditIssues,
   AuditPages,
+  Connection,
+  CtrCurve,
+  GoogleProperties,
+  IntegrationStatus,
   MeResponse,
+  Opportunities,
   Org,
   PageDetail,
   RegisterInput,
+  SearchCoverage,
+  SearchPageDetail,
+  SearchRange,
+  SearchSegment,
+  SearchTable,
+  SearchTotals,
   Site,
+  SiteIntegrations,
+  SyncJob,
   TokenResponse,
 } from "./types";
 
@@ -34,6 +50,8 @@ export interface ApiClientOptions {
 interface RequestOptions {
   method?: string;
   body?: unknown;
+  /** A multipart upload (CSV files). Sent without a JSON content type so the browser adds the boundary. */
+  form?: FormData;
   /** false = do not send the bearer token and never try a silent refresh (login, register, refresh itself). */
   auth?: boolean;
   /** "blob" for file downloads (CSV export). */
@@ -94,13 +112,13 @@ export class ApiClient {
 
   private send(path: string, options: RequestOptions, useAuth: boolean): Promise<Response> {
     const headers: Record<string, string> = { Accept: "application/json" };
-    if (options.body !== undefined) headers["Content-Type"] = "application/json";
+    if (options.body !== undefined && !options.form) headers["Content-Type"] = "application/json";
     if (useAuth && this.accessToken) headers.Authorization = `Bearer ${this.accessToken}`;
     if (useAuth && this.orgId) headers["X-Org-Id"] = this.orgId;
     return this.fetchImpl(`${this.baseUrl}${path}`, {
       method: options.method ?? "GET",
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options.form ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
       credentials: "include", // the refresh cookie is httpOnly and scoped to /auth
     });
   }
@@ -245,6 +263,109 @@ export class ApiClient {
   /** The CSV needs the bearer token, so it is fetched here and saved from a blob instead of a plain link. */
   auditCsv(auditId: string): Promise<Blob> {
     return this.request<Blob>(`/audits/${auditId}/export.csv`, { as: "blob" });
+  }
+
+  // ---- integrations ----
+  integrationStatus(): Promise<IntegrationStatus> {
+    return this.request<IntegrationStatus>("/integrations/status", { auth: false });
+  }
+
+  siteIntegrations(siteId: string): Promise<SiteIntegrations> {
+    return this.request<SiteIntegrations>(`/sites/${siteId}/integrations`);
+  }
+
+  /** Returns the Google consent-screen URL; the browser then navigates there. */
+  googleConnect(siteId: string): Promise<{ authorization_url: string }> {
+    return this.request(`/sites/${siteId}/integrations/google/connect`, { method: "POST" });
+  }
+
+  googleProperties(siteId: string): Promise<GoogleProperties> {
+    return this.request<GoogleProperties>(`/sites/${siteId}/integrations/google/properties`);
+  }
+
+  selectGoogleProperty(siteId: string, siteUrl: string): Promise<Connection> {
+    return this.request<Connection>(`/sites/${siteId}/integrations/google/property`, {
+      method: "PUT",
+      body: { site_url: siteUrl },
+    });
+  }
+
+  googleSync(siteId: string, mode: "backfill" | "incremental" = "incremental"): Promise<SyncJob> {
+    return this.request<SyncJob>(`/sites/${siteId}/integrations/google/sync`, { method: "POST", body: { mode } });
+  }
+
+  googleDisconnect(siteId: string): Promise<void> {
+    return this.request<void>(`/sites/${siteId}/integrations/google`, { method: "DELETE" });
+  }
+
+  saveBingKey(siteId: string, apiKey: string, siteUrl?: string): Promise<Connection> {
+    return this.request<Connection>(`/sites/${siteId}/integrations/bing`, {
+      method: "PUT",
+      body: siteUrl ? { api_key: apiKey, site_url: siteUrl } : { api_key: apiKey },
+    });
+  }
+
+  bingDisconnect(siteId: string): Promise<void> {
+    return this.request<void>(`/sites/${siteId}/integrations/bing`, { method: "DELETE" });
+  }
+
+  // ---- search data ----
+  searchCoverage(siteId: string): Promise<SearchCoverage> {
+    return this.request<SearchCoverage>(`/sites/${siteId}/search/coverage`);
+  }
+
+  searchTotals(siteId: string, range: SearchRange): Promise<SearchTotals> {
+    return this.request<SearchTotals>(`/sites/${siteId}/search/totals?range=${range}`);
+  }
+
+  searchTable(
+    siteId: string,
+    kind: "queries" | "pages",
+    params: { range: SearchRange; segment: SearchSegment; limit?: number; offset?: number },
+  ): Promise<SearchTable> {
+    const query = new URLSearchParams({
+      range: params.range,
+      segment: params.segment,
+      limit: String(params.limit ?? 25),
+      offset: String(params.offset ?? 0),
+    });
+    return this.request<SearchTable>(`/sites/${siteId}/search/${kind}?${query.toString()}`);
+  }
+
+  opportunities(
+    siteId: string,
+    params: { type?: string; limit?: number; offset?: number } = {},
+  ): Promise<Opportunities> {
+    const query = new URLSearchParams({ limit: String(params.limit ?? 50), offset: String(params.offset ?? 0) });
+    if (params.type) query.set("type", params.type);
+    return this.request<Opportunities>(`/sites/${siteId}/search/opportunities?${query.toString()}`);
+  }
+
+  searchPage(siteId: string, url: string, range: SearchRange, segment: SearchSegment): Promise<SearchPageDetail> {
+    const query = new URLSearchParams({ url, range, segment });
+    return this.request<SearchPageDetail>(`/sites/${siteId}/search/page?${query.toString()}`);
+  }
+
+  ctrCurve(siteId: string): Promise<CtrCurve> {
+    return this.request<CtrCurve>(`/sites/${siteId}/search/curve`);
+  }
+
+  // ---- AI reports ----
+  aiReport(siteId: string, source: AiReportSource): Promise<AiReport> {
+    return this.request<AiReport>(`/sites/${siteId}/ai-reports/${source}`);
+  }
+
+  uploadAiReport(siteId: string, source: AiReportSource, file: File): Promise<AiReportImport> {
+    const form = new FormData();
+    form.append("file", file);
+    return this.request<AiReportImport>(`/sites/${siteId}/ai-reports/${source}/import`, {
+      method: "POST",
+      form,
+    });
+  }
+
+  deleteAiReportImport(siteId: string, importId: string): Promise<void> {
+    return this.request<void>(`/sites/${siteId}/ai-reports/imports/${importId}`, { method: "DELETE" });
   }
 
   createOrg(name: string): Promise<Org> {

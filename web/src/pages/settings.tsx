@@ -1,3 +1,6 @@
+import { useRouterState } from "@tanstack/react-router";
+
+import { IntegrationsPanel, returnMessage } from "@/components/integrations/site-integrations";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -5,10 +8,11 @@ import { useAuth } from "@/lib/auth";
 
 export function SettingsPage() {
   const { session, activeOrg } = useAuth();
+  const search = useRouterState({ select: (s) => s.location.search }) as Record<string, unknown>;
   if (session.status !== "authenticated" || !activeOrg) return null;
   return (
     <>
-      <PageHeader title="Settings" description="Your account and the active organisation." />
+      <PageHeader title="Settings" description="Your account, the active organisation and its integrations." />
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -31,6 +35,7 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+      <IntegrationsPanel banner={returnMessage(search)} />
     </>
   );
 }

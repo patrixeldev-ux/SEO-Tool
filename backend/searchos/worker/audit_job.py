@@ -6,17 +6,23 @@ import asyncio
 import json
 import logging
 import uuid
+from datetime import timedelta
 from typing import Any
 
+import httpx
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from searchos.audit.model import AuditInput, PageData, SiteData
 from searchos.audit.runner import AuditResult, run_audit
+from searchos.core.config import get_settings
 from searchos.crawl.engine import CrawlConfig
 from searchos.crawl.parser import count_words, extract_main_text
 from searchos.crawl.render import PlaywrightRenderer, Renderer, sample_pages
-from searchos.models import AuditSnapshot, Crawl, Issue, Link, Page
+from searchos.crawl.urls import InvalidUrlError, normalise_url
+from searchos.integrations.errors import IntegrationError
+from searchos.integrations.psi import Candidate, PsiMetrics, fetch_psi, select_psi_urls
+from searchos.models import AuditSnapshot, Crawl, GscRow, Issue, Link, Page, PsiResult
 from searchos.worker.jobs import JobContext
 
 log = logging.getLogger(__name__)
@@ -84,7 +90,150 @@ async def load_audit_input(session: AsyncSession, crawl: Crawl) -> AuditInput:
     for from_id, to_url in link_rows:
         targets.setdefault(from_id, []).append(to_url)
     pages = (await session.scalars(sa.select(Page).where(Page.crawl_id == crawl.id).order_by(Page.url))).all()
-    return AuditInput([page_data(p, tuple(targets.get(p.id, ()))) for p in pages], site_data(crawl))
+    psi = await load_psi(session, crawl.id)
+    data = [page_data(p, tuple(targets.get(p.id, ()))) for p in pages]
+    for page in data:
+        if page.normalised_url in psi:
+            page.extra["psi"] = psi[page.normalised_url]
+    return AuditInput(data, site_data(crawl))
+
+
+async def load_psi(session: AsyncSession, crawl_id: uuid.UUID) -> dict[str, dict[str, Any]]:
+    """PageSpeed results attached to this crawl, by the page's normalised URL (only rows that have data)."""
+    rows = await session.scalars(
+        sa.select(PsiResult).where(PsiResult.crawl_id == crawl_id, PsiResult.error.is_(None))
+    )
+    return {
+        r.url: {
+            "lcp_ms": r.lcp_ms,
+            "lcp_source": r.lcp_source,
+            "inp_ms": r.inp_ms,
+            "inp_source": r.inp_source,
+            "cls": r.cls,
+            "cls_source": r.cls_source,
+            "performance_score": r.performance_score,
+        }
+        for r in rows
+    }
+
+
+# ---- PageSpeed Insights -----------------------------------------------------------------------------
+PSI_CONCURRENCY = 3
+PSI_UNAVAILABLE = (
+    "PageSpeed Insights data could not be fetched, so the Core Web Vitals checks were not run ({reason})."
+)
+
+
+def match_key(url: str) -> str:
+    """Compare Search Console and crawler URLs without scheme, 'www.' or trailing-slash differences."""
+    try:
+        norm = normalise_url(url)
+    except InvalidUrlError:
+        norm = url
+    rest = norm.split("://", 1)[-1].lower()
+    if rest.startswith("www."):
+        rest = rest[4:]
+    return rest.rstrip("/") or rest
+
+
+async def gsc_impressions_by_page(
+    session: AsyncSession, site_id: uuid.UUID, limit: int = 500
+) -> dict[str, int]:
+    """Impressions per match_key over the newest 28 stored days (empty when Search Console has no data)."""
+    latest = await session.scalar(sa.select(sa.func.max(GscRow.date)).where(GscRow.site_id == site_id))
+    if latest is None:
+        return {}
+    rows = await session.execute(
+        sa.select(GscRow.page, sa.func.sum(GscRow.impressions))
+        .where(GscRow.site_id == site_id, GscRow.date > latest - timedelta(days=28))
+        .group_by(GscRow.page)
+        .order_by(sa.func.sum(GscRow.impressions).desc())
+        .limit(limit)
+    )
+    totals: dict[str, int] = {}
+    for page, impressions in rows:
+        key = match_key(page)
+        totals[key] = totals.get(key, 0) + int(impressions)
+    return totals
+
+
+async def run_psi_step(
+    ctx: JobContext, crawl_id: uuid.UUID, *, client: httpx.AsyncClient | None = None
+) -> list[str]:
+    """Fetch PageSpeed data for the top pages and store it on the crawl. Returns warnings for the audit.
+
+    Skipped for private/local test crawls, when PSI_ENABLED=false, or when the job payload says psi=false."""
+    settings = get_settings()
+    if not settings.psi_enabled or ctx.payload.get("psi") is False or ctx.payload.get("allow_private_hosts"):
+        return []
+    async with ctx.sessions() as session:
+        crawl = await session.get(Crawl, crawl_id)
+        if crawl is None:
+            return []
+        site_id = crawl.site_id
+        audit_input = await load_audit_input(session, crawl)
+        impressions = await gsc_impressions_by_page(session, site_id)
+    homepage = audit_input.homepage
+    candidates = [
+        Candidate(p.normalised_url, p.inlinks_count, p.is_indexable, homepage is not None and p is homepage)
+        for p in audit_input.pages
+    ]
+    by_key = {match_key(c.url): c.url for c in candidates}
+    mapped = {by_key[k]: n for k, n in impressions.items() if k in by_key}
+    urls = select_psi_urls(candidates, mapped)
+    if not urls:
+        return []
+
+    api_key = settings.psi_api_key.get_secret_value() if settings.psi_api_key else None
+    gate = asyncio.Semaphore(PSI_CONCURRENCY)
+    results: dict[str, PsiMetrics | str] = {}
+    own = client is None
+    http = client or httpx.AsyncClient(timeout=120.0)
+
+    async def one(url: str) -> None:
+        async with gate:
+            if await ctx.is_cancelled():
+                return
+            try:
+                results[url] = await fetch_psi(http, url, api_key=api_key)
+            except IntegrationError as exc:
+                results[url] = str(exc)[:500]
+
+    try:
+        await asyncio.gather(*(one(u) for u in urls))
+    finally:
+        if own:
+            await http.aclose()
+
+    async with ctx.sessions() as session:
+        await session.execute(sa.delete(PsiResult).where(PsiResult.crawl_id == crawl_id))
+        for url, outcome in results.items():
+            if isinstance(outcome, str):
+                session.add(PsiResult(site_id=site_id, crawl_id=crawl_id, url=url, error=outcome))
+            else:
+                session.add(
+                    PsiResult(
+                        site_id=site_id,
+                        crawl_id=crawl_id,
+                        url=url,
+                        lcp_ms=outcome.lcp_ms,
+                        lcp_source=outcome.lcp_source,
+                        inp_ms=outcome.inp_ms,
+                        inp_source=outcome.inp_source,
+                        cls=outcome.cls,
+                        cls_source=outcome.cls_source,
+                        performance_score=outcome.performance_score,
+                    )
+                )
+        await session.commit()
+    errors = [r for r in results.values() if isinstance(r, str)]
+    if results and len(errors) == len(results):
+        return [PSI_UNAVAILABLE.format(reason=errors[0])]
+    if errors:
+        return [
+            f"PageSpeed Insights failed for {len(errors)} of {len(results)} pages; those pages were not checked."
+        ]
+    return []
 
 
 # ---- JS rendering check -----------------------------------------------------------------------------
@@ -127,7 +276,7 @@ async def run_js_check(
                     )
                     await session.commit()
                 rendered += 1
-            await ctx.set_progress(80 + round(12 * (index + 1) / len(sample)))
+            await ctx.set_progress(80 + round(8 * (index + 1) / len(sample)))
     finally:
         await renderer.aclose()
     return True, rendered
@@ -190,6 +339,7 @@ async def run_post_crawl_steps(
             warnings.append(JS_UNAVAILABLE)
     else:
         site_info["js_check"] = {"available": False, "pages_rendered": 0, "disabled": True}
+    warnings.extend(await run_psi_step(ctx, crawl_id))
     await ctx.set_progress(93)
     await run_audit_for_crawl_with_info(ctx.sessions, crawl_id, site_info)
     await ctx.set_progress(99)
