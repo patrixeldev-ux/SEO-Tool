@@ -18,6 +18,7 @@ from searchos.audit.catalog import load_catalog
 from searchos.audit.schema_rules import rule_family, types_of
 from searchos.crawl.urls import InvalidUrlError, match_key, normalise_url
 from searchos.planner.gain import CTR_GAP_SHARE
+from searchos.planner.manual_tasks import MANUAL_BUILDERS
 from searchos.planner.mapping import MAPPINGS
 from searchos.planner.model import Candidate, Finding, PlanContext, PlanPage
 
@@ -697,4 +698,5 @@ BUILDERS: dict[str, Builder] = {
     "ssr_task": build_ssr_task,
     "robots_review": build_robots_review,
     "noindex_review": build_noindex_review,
+    **MANUAL_BUILDERS,
 }

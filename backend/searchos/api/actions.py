@@ -45,6 +45,7 @@ class ActionOut(BaseModel):
     source_kind: str
     sources: list[str]
     generation: dict[str, Any]
+    checklist_done: list[str]
     reject_reason: str | None
     decided_at: datetime | None
     created_at: datetime
@@ -75,6 +76,7 @@ def action_out(action: Action) -> ActionOut:
         source_kind=action.source_kind,
         sources=list(action.sources),
         generation=action.generation,
+        checklist_done=list(action.checklist_done),
         reject_reason=action.reject_reason,
         decided_at=action.decided_at,
         created_at=action.created_at,

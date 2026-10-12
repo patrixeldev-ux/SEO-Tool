@@ -115,6 +115,16 @@ step). The risk class decides what may ever happen without a person:
 **Never automated, whatever the risk class says:** deleting a page, changes to `robots.txt` rules, changes to
 `noindex`, and link exchanges or paid links. This list is enforced in code and by a test.
 
+### Manual tasks
+
+Four kinds of work cannot be automated and are never offered as one-click changes: **earning links and mentions**,
+**showing who is behind the content (author and E-E-A-T)**, **collecting genuine reviews** and **digital PR**.
+Each appears as one checklist per site, written from the site's own data (the pages most worth citing, the
+queries people already find the site by, whether an About page exists, which articles show no author). Their
+expected gain is a prior ("prior, not measured") like any other action without data. Every checklist also lists
+what not to do: buy or swap links, mass-email strangers, write or buy reviews, invent credentials, publish
+made-up statistics. Ticking items off is saved; "Mark done" closes the task.
+
 ### Rejected actions come back only for a reason
 
 An action a person rejects is not proposed again for **90 days**, unless its priority has risen to at least **1.5

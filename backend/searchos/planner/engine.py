@@ -36,6 +36,7 @@ from searchos.planner.catalog import (
 )
 from searchos.planner.generate import generate_values
 from searchos.planner.loader import load_context
+from searchos.planner.manual_tasks import STANDALONE_TYPES
 from searchos.planner.mapping import MAPPINGS
 from searchos.planner.model import Candidate, Finding, PlanContext
 
@@ -61,7 +62,10 @@ def findings_by_action(findings: list[Finding]) -> dict[str, list[Finding]]:
 def build_candidates(ctx: PlanContext) -> list[Candidate]:
     """Every action the current findings call for (pure: no database, no AI)."""
     found: dict[tuple[str, str, str], Candidate] = {}
-    for action_type, group in findings_by_action(ctx.findings).items():
+    grouped = findings_by_action(ctx.findings)
+    for action_type in STANDALONE_TYPES:  # site-wide tasks that no finding triggers
+        grouped.setdefault(action_type, [])
+    for action_type, group in grouped.items():
         builder = BUILDERS.get(action_type)
         if builder is None:
             ctx.skipped.append({"type": action_type, "reason": "no builder for this action type yet"})

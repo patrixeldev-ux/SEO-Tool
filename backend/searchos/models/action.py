@@ -71,6 +71,10 @@ class Action(IdMixin, CreatedAtMixin, Base):
     generation: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=_EMPTY_OBJ
     )
+    # Manual tasks: ids of the checklist items a person has ticked off (see planner/manual_tasks.py).
+    checklist_done: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
+    )
     decided_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.Uuid, sa.ForeignKey("users.id", ondelete="SET NULL")
     )
