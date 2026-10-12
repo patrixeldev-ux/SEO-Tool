@@ -143,3 +143,37 @@ async def existing_total_days(
             )
         )
         return set(rows)
+
+
+async def retag_conversational(
+    sessions: async_sessionmaker[AsyncSession],
+    site_id: uuid.UUID,
+    tag: Callable[[str], bool],
+    *,
+    chunk: int = 5000,
+) -> int:
+    """Re-run the conversational heuristic over every stored query of a site (after the heuristic changes).
+
+    Returns how many rows changed their flag."""
+    async with sessions() as session:
+        queries = list(
+            await session.scalars(sa.select(GscRow.query).where(GscRow.site_id == site_id).distinct())
+        )
+    flags = {q: bool(tag(q)) for q in queries}
+    changed = 0
+    for value in (True, False):
+        wanted = [q for q, flag in flags.items() if flag is value]
+        for start in range(0, len(wanted), chunk):
+            async with sessions() as session:
+                result = await session.execute(
+                    sa.update(GscRow)
+                    .where(
+                        GscRow.site_id == site_id,
+                        GscRow.query.in_(wanted[start : start + chunk]),
+                        GscRow.is_conversational.is_not(value),
+                    )
+                    .values(is_conversational=value)
+                )
+                await session.commit()
+                changed += int(result.rowcount or 0)  # type: ignore[attr-defined]
+    return changed

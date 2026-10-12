@@ -22,6 +22,7 @@ from searchos.integrations.gsc_dates import days_to_fetch, earliest_day, latest_
 from searchos.integrations.gsc_store import existing_total_days, ingest_day
 from searchos.models import IntegrationConnection
 from searchos.search.insights import recompute_insights
+from searchos.stats.conversational import is_conversational
 from searchos.worker.jobs import JobContext
 
 log = logging.getLogger(__name__)
@@ -69,7 +70,9 @@ async def gsc_sync_handler(ctx: JobContext) -> dict[str, Any]:
                 except IndexError:
                     return
                 try:
-                    result = await ingest_day(ctx.sessions, client, site_id, day, today=today, tag=None)
+                    result = await ingest_day(
+                        ctx.sessions, client, site_id, day, today=today, tag=is_conversational
+                    )
                     rows += result.rows
                 except NeedsReauthError as exc:
                     fatal = exc

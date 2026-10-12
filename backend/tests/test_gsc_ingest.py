@@ -513,3 +513,32 @@ def test_beat_schedule_runs_the_nightly_sync_at_2330_utc() -> None:
     entry = app.conf.beat_schedule["gsc-nightly-incremental"]
     assert entry["task"] == "searchos.gsc.nightly"
     assert entry["schedule"]._orig_hour == 23 and entry["schedule"]._orig_minute == 30
+
+
+async def test_conversational_queries_are_tagged_at_ingest_and_retagging_updates_old_rows(
+    session: AsyncSession,
+) -> None:
+    from searchos.integrations.gsc_store import retag_conversational
+    from searchos.stats.conversational import is_conversational
+
+    _, site, conn = await make_connected_site(session)
+    site_id = site.id
+    rows = [
+        gsc_row("https://example.com/a", "tell me more", 0, 40, 5.0),
+        gsc_row("https://example.com/a", "best widgets", 3, 40, 5.0),
+    ]
+    with respx.mock(assert_all_called=False) as router:
+        router.post(QUERY_URL).mock(
+            side_effect=fake_search_console(lambda d: rows, lambda d: total_row(d, 3, 80))
+        )
+        job = await run_sync(
+            session, conn, mode="backfill", today=TODAY.isoformat(), start="2026-08-01", end="2026-08-01"
+        )
+    assert job.status is JobStatus.done, job.error
+    flags = dict((await session.execute(sa.select(GscRow.query, GscRow.is_conversational))).all())
+    assert flags == {"tell me more": True, "best widgets": False}
+
+    await session.execute(sa.update(GscRow).values(is_conversational=False))
+    await session.commit()
+    assert await retag_conversational(get_sessionmaker(), site_id, is_conversational) == 1
+    assert await retag_conversational(get_sessionmaker(), site_id, is_conversational) == 0  # idempotent
