@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from searchos.models.base import Base
@@ -79,4 +81,53 @@ class GscDailyTotal(Base):
     position: Mapped[float | None] = mapped_column(sa.Float)
     ingested_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.clock_timestamp()
+    )
+
+
+class Opportunity(Base):
+    """A finding from the opportunity finders, recomputed after every sync (the previous set is replaced)."""
+
+    __tablename__ = "opportunities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, primary_key=True, default=uuid.uuid4, server_default=sa.text("gen_random_uuid()")
+    )
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
+    )
+    # STRIKING_DISTANCE | CTR_GAP | DECAY | CANNIBALISATION
+    type: Mapped[str] = mapped_column(sa.String(24), nullable=False)
+    page: Mapped[str | None] = mapped_column(sa.Text)
+    query: Mapped[str | None] = mapped_column(sa.Text)
+    evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb")
+    )
+    score: Mapped[float] = mapped_column(sa.Float, nullable=False)
+    window_start: Mapped[date] = mapped_column(sa.Date, nullable=False)
+    window_end: Mapped[date] = mapped_column(sa.Date, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.clock_timestamp()
+    )
+
+    __table_args__ = (sa.Index("ix_opportunities_site_id_type_score", "site_id", "type", "score"),)
+
+
+class SearchInsights(Base):
+    """What the last recompute used: window, the site's CTR curve, per-type counts and anything it skipped."""
+
+    __tablename__ = "search_insights"
+
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.clock_timestamp()
+    )
+    window_start: Mapped[date] = mapped_column(sa.Date, nullable=False)
+    window_end: Mapped[date] = mapped_column(sa.Date, nullable=False)
+    curve: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb")
+    )
+    summary: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb")
     )

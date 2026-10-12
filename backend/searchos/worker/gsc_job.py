@@ -7,6 +7,7 @@ after every day. Re-running after a crash only redoes days that have no totals r
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from collections import deque
 from datetime import UTC, date, datetime
@@ -20,7 +21,10 @@ from searchos.integrations.gsc import MAX_CONCURRENT, GscClient
 from searchos.integrations.gsc_dates import days_to_fetch, earliest_day, latest_day
 from searchos.integrations.gsc_store import existing_total_days, ingest_day
 from searchos.models import IntegrationConnection
+from searchos.search.insights import recompute_insights
 from searchos.worker.jobs import JobContext
+
+log = logging.getLogger(__name__)
 
 FATAL_STATUSES = frozenset({400, 401, 403, 404})  # every other day would fail the same way: stop early
 
@@ -104,4 +108,16 @@ async def gsc_sync_handler(ctx: JobContext) -> dict[str, Any]:
         raise RuntimeError(
             f"{len(failures)} of {total} days failed (they are retried next sync). First: {failures[0]}"
         )
-    return {"mode": mode, "days_fetched": total, "rows": rows, "skipped_rows": client.skipped_rows}
+    result: dict[str, Any] = {
+        "mode": mode,
+        "days_fetched": total,
+        "rows": rows,
+        "skipped_rows": client.skipped_rows,
+    }
+    try:
+        insights = await recompute_insights(ctx.sessions, site_id, today=today)
+        result["opportunities"] = (insights or {}).get("counts", {})
+    except Exception as exc:  # the data is stored; a failed recompute must not fail the sync
+        log.exception("recomputing insights for site %s failed", site_id)
+        result["insights_error"] = f"{type(exc).__name__}: {exc}"[:300]
+    return result
