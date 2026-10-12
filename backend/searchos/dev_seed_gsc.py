@@ -9,6 +9,12 @@ far under the curve, a page that lost clicks recently, two pages competing for o
 queries ("yes", "tell me more") and branded queries. Totals are about 12% above the sum of the query rows, like
 real Search Console, whose totals include anonymised queries.
 
+    python -m searchos.dev_seed_gsc --email demo@example.com --site fixture
+
+The second form seeds the "fixture.example" site that `dev_crawl_fixture` audits, with search data for the
+fixture's own pages (http://127.0.0.1:18765/...). Run the audit first, then this, then re-plan: the planner can then
+price actions from measured numbers instead of priors.
+
 Refuses to run when ENVIRONMENT=production. Nothing here talks to Google.
 """
 
@@ -27,6 +33,7 @@ import sqlalchemy as sa
 from searchos.core.auth import normalize_email
 from searchos.core.config import get_settings
 from searchos.core.db import dispose_engine, get_sessionmaker
+from searchos.dev_crawl_fixture import FIXTURE_DOMAIN, FIXTURE_NAME, FIXTURE_PORT
 from searchos.integrations.gsc_dates import earliest_day, latest_day
 from searchos.models import GscDailyTotal, GscRow, Membership, Opportunity, SearchInsights, Site, User
 from searchos.search.insights import recompute_insights
@@ -91,6 +98,12 @@ SERIES: list[Series] = [
     Series(f"{BASE}/guides/espresso-basics", "espresso shot time", 5.0, 300, 1.0, 0.4),
 ]
 
+DEMO_CONVERSATIONAL_PAGES = [
+    f"{BASE}/blog/cold-brew-guide",
+    f"{BASE}/blog/pour-over",
+    f"{BASE}/shop/subscriptions",
+]
+
 # Searches that are really follow-ups inside an AI conversation. Many impressions, almost no clicks.
 CONVERSATIONAL = [
     ("yes", 5.0, 160),
@@ -100,15 +113,43 @@ CONVERSATIONAL = [
 ]
 
 
+def _fixture_series() -> tuple[list[Series], list[str]]:
+    """Search data for the pages of the bundled fixture website (the URLs `dev_crawl_fixture` crawls)."""
+    base = f"http://127.0.0.1:{FIXTURE_PORT}"
+    series = [
+        Series(f"{base}/", "harbor and pine coffee", 1.2, 80, 2.2),
+        Series(f"{base}/about.html", "coffee roaster near me", 9.0, 90),
+        # STRIKING_DISTANCE
+        Series(f"{base}/blog/brewing-guide.html", "how to brew coffee at home", 7.5, 800),
+        Series(f"{base}/blog/roast-levels.html", "light vs dark roast", 9.5, 650),
+        # CTR_GAP (the pages whose title or description is missing or weak)
+        Series(f"{base}/defects/title-missing.html", "coffee brewing temperature", 3.0, 500, 0.18),
+        Series(f"{base}/defects/meta-missing.html", "coffee grind size chart", 4.0, 420, 0.22),
+        Series(f"{base}/defects/title-long.html", "water to coffee ratio", 3.5, 380, 0.25),
+        # CANNIBALISATION
+        Series(f"{base}/defects/thin.html", "how to brew coffee at home", 9.0, 420, 0.8),
+        # DECAY
+        Series(f"{base}/defects/h1-multiple.html", "how to pull espresso shot", 4.2, 520, 1.0, 0.4),
+        Series(f"{base}/defects/h1-multiple.html", "espresso shot time", 5.0, 300, 1.0, 0.4),
+        # pages with some traffic but nothing wrong with their search numbers
+        Series(f"{base}/defects/canonical-mismatch.html", "coffee canonical example", 3.2, 120),
+        Series(f"{base}/blog/index.html", "harbor and pine blog", 2.5, 60),
+    ]
+    return series, [f"{base}/blog/brewing-guide.html", f"{base}/blog/roast-levels.html", f"{base}/about.html"]
+
+
 def generate(
-    today: date, seed: int = 7
+    today: date,
+    seed: int = 7,
+    *,
+    fixture: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:  # (query rows, daily totals) without site_id
+    series, conv_pages = _fixture_series() if fixture else (SERIES, DEMO_CONVERSATIONAL_PAGES)
     rng = random.Random(seed)  # noqa: S311 (made-up demo data, not security)
     end = latest_day(today)
     start = earliest_day(today) + timedelta(days=1)
     rows: list[dict[str, Any]] = []
     totals: list[dict[str, Any]] = []
-    conv_pages = [f"{BASE}/blog/cold-brew-guide", f"{BASE}/blog/pour-over", f"{BASE}/shop/subscriptions"]
     day = start
     while day <= end:
         recent = (end - day).days < 28
@@ -124,7 +165,7 @@ def generate(
                 s.daily_impressions,
                 s.ctr_factor * (s.recent_factor if recent else 1.0),
             )
-            for s in SERIES
+            for s in series
         ]
         for i, (query, position, impr) in enumerate(CONVERSATIONAL):
             specs.append((conv_pages[i % len(conv_pages)], query, position, impr, 0.05))
@@ -168,7 +209,9 @@ def generate(
     return rows, totals
 
 
-async def seed(email: str, today: date | None = None) -> str:
+async def seed(email: str, today: date | None = None, *, fixture: bool = False) -> str:
+    domain = FIXTURE_DOMAIN if fixture else DEMO_DOMAIN
+    name = FIXTURE_NAME if fixture else DEMO_NAME
     today = today or datetime.now(UTC).date()
     async with get_sessionmaker()() as session:
         user = await session.scalar(sa.select(User).where(User.email == normalize_email(email)))
@@ -183,16 +226,16 @@ async def seed(email: str, today: date | None = None) -> str:
         if membership is None:
             return "This user does not belong to an organisation."
         site = await session.scalar(
-            sa.select(Site).where(Site.org_id == membership.org_id, Site.domain == DEMO_DOMAIN)
+            sa.select(Site).where(Site.org_id == membership.org_id, Site.domain == domain)
         )
         if site is None:
-            site = Site(org_id=membership.org_id, domain=DEMO_DOMAIN, display_name=DEMO_NAME)
+            site = Site(org_id=membership.org_id, domain=domain, display_name=name)
             session.add(site)
             await session.flush()
         site_id = site.id
         for table in (GscRow, GscDailyTotal, Opportunity, SearchInsights):
             await session.execute(sa.delete(table).where(table.site_id == site_id))
-        rows, totals = generate(today)
+        rows, totals = generate(today, fixture=fixture)
         for start in range(0, len(rows), 2000):
             await session.execute(
                 sa.insert(GscRow), [{"site_id": site_id, **r} for r in rows[start : start + 2000]]
@@ -202,8 +245,8 @@ async def seed(email: str, today: date | None = None) -> str:
     summary = await recompute_insights(get_sessionmaker(), site_id, today=today)
     counts = (summary or {}).get("counts", {})
     return (
-        f"Seeded {len(totals)} days / {len(rows):,} rows for {DEMO_DOMAIN} (site {site_id}).\n"
-        f"Opportunities: {counts}\nOpen Search Console in the web app and pick '{DEMO_NAME}'."
+        f"Seeded {len(totals)} days / {len(rows):,} rows for {domain} (site {site_id}).\n"
+        f"Opportunities: {counts}\nOpen Search Console in the web app and pick '{name}'."
     )
 
 
@@ -212,6 +255,12 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--email", default="demo@example.com")
+    parser.add_argument(
+        "--site",
+        choices=["demo", "fixture"],
+        default="demo",
+        help="demo: the made-up coffee shop; fixture: search data for the pages dev_crawl_fixture audits",
+    )
     args = parser.parse_args()
     if get_settings().is_production:
         print("Refusing to run when ENVIRONMENT=production.", file=sys.stderr)
@@ -219,7 +268,7 @@ def main() -> int:
 
     async def go() -> int:
         try:
-            message = await seed(args.email)
+            message = await seed(args.email, fixture=args.site == "fixture")
         finally:
             await dispose_engine()
         print(message)

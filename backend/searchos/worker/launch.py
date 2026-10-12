@@ -98,3 +98,41 @@ async def enqueue_crawl(session: AsyncSession, crawl: Crawl, job: Job) -> bool:
         await session.commit()
         return False
     return True
+
+
+# ---- planning ---------------------------------------------------------------------------------------
+async def start_plan(
+    session: AsyncSession,
+    site_id: Any,
+    org_id: Any,
+    *,
+    trigger: str,
+    created_by: Any = None,
+) -> Job:
+    """Queue a re-plan of the site's actions. A plan already waiting in the queue is reused, not doubled."""
+    from searchos.worker.tasks import plan_task
+
+    waiting = await session.scalar(
+        sa.select(Job)
+        .where(Job.site_id == site_id, Job.type == "plan", Job.status == JobStatus.queued)
+        .order_by(Job.created_at.desc())
+        .limit(1)
+    )
+    if waiting is not None:
+        return waiting
+    job = Job(
+        org_id=org_id,
+        site_id=site_id,
+        created_by=created_by,
+        type="plan",
+        payload={"site_id": str(site_id), "trigger": trigger},
+    )
+    session.add(job)
+    await session.commit()
+    try:
+        plan_task.delay(str(job.id))
+    except Exception:
+        job.status = JobStatus.failed
+        job.error = "Could not enqueue job: broker unavailable"
+        await session.commit()
+    return job

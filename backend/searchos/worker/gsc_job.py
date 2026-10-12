@@ -120,6 +120,10 @@ async def gsc_sync_handler(ctx: JobContext) -> dict[str, Any]:
     try:
         insights = await recompute_insights(ctx.sessions, site_id, today=today)
         result["opportunities"] = (insights or {}).get("counts", {})
+        if insights is not None:
+            from searchos.worker.plan_job import trigger_plan_for_site
+
+            await trigger_plan_for_site(ctx.sessions, site_id, "opportunities")
     except Exception as exc:  # the data is stored; a failed recompute must not fail the sync
         log.exception("recomputing insights for site %s failed", site_id)
         result["insights_error"] = f"{type(exc).__name__}: {exc}"[:300]

@@ -37,6 +37,7 @@ class PageRecord:
     hreflang: list[dict[str, str]] = field(default_factory=list)
     word_count: int = 0
     main_text_method: str | None = None
+    main_text: str = ""
     structured_data: dict[str, Any] = field(default_factory=dict)
     in_sitemap: bool = False
     extra: dict[str, Any] = field(default_factory=dict)

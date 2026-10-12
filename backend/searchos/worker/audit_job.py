@@ -19,7 +19,7 @@ from searchos.core.config import get_settings
 from searchos.crawl.engine import CrawlConfig
 from searchos.crawl.parser import count_words, extract_main_text
 from searchos.crawl.render import PlaywrightRenderer, Renderer, sample_pages
-from searchos.crawl.urls import InvalidUrlError, normalise_url
+from searchos.crawl.urls import match_key
 from searchos.integrations.errors import IntegrationError
 from searchos.integrations.psi import Candidate, PsiMetrics, fetch_psi, select_psi_urls
 from searchos.models import AuditSnapshot, Crawl, GscRow, Issue, Link, Page, PsiResult
@@ -122,18 +122,6 @@ PSI_CONCURRENCY = 3
 PSI_UNAVAILABLE = (
     "PageSpeed Insights data could not be fetched, so the Core Web Vitals checks were not run ({reason})."
 )
-
-
-def match_key(url: str) -> str:
-    """Compare Search Console and crawler URLs without scheme, 'www.' or trailing-slash differences."""
-    try:
-        norm = normalise_url(url)
-    except InvalidUrlError:
-        norm = url
-    rest = norm.split("://", 1)[-1].lower()
-    if rest.startswith("www."):
-        rest = rest[4:]
-    return rest.rstrip("/") or rest
 
 
 async def gsc_impressions_by_page(

@@ -95,8 +95,8 @@ This is safe to run repeatedly. It prints the login:
 4. Toggle light/dark with the moon/sun button. Reload: the choice is remembered.
 5. Leave the page open for 15+ minutes (or just wait for the access token to expire) and click around: the app
    refreshes the session silently and you are not sent back to the login page.
-6. AI Visibility, Actions, Experiments, Content and Reports show a "Coming in Phase N" card; they are built in
-   later phases. **Audit** is live (see 5.4) and so is **Search Console** (see 5.5).
+6. AI Visibility, Experiments, Content and Reports show a "Coming in Phase N" card; they are built in
+   later phases. **Audit** is live (see 5.4), so are **Search Console** (see 5.5) and **Actions** (see 5.6).
 
 ### 5.2 API health
 
@@ -172,7 +172,39 @@ inside the app at Settings, Integrations, "Open the setup guide"). Without it th
 yet" and everything else keeps working. After connecting, compare the totals on the Search Console page with
 Search Console's own Performance report for the same dates: they should match within 1%.
 
-### 5.6 Automated tests
+### 5.6 The action plan (Phase 3)
+
+The planner turns audit findings and Search Console opportunities into a ranked list of actions. It works **without
+any AI key**: every action is created, and the ones that need written text (titles, descriptions, structured
+data, anchors) show "Needs AI" with a banner that links to **Settings, AI**.
+
+To see a full plan with made-up data and no key, load the fixture website's audit and matching search data, then
+re-plan. `LLM_PROVIDER=fake` is a development-only stand-in that writes plausible text so you can click through
+every state (it is refused when `ENVIRONMENT=production`):
+
+```powershell
+# in .env add:   LLM_PROVIDER=fake      then:  docker compose -f docker-compose.dev.yml up -d --force-recreate api worker
+docker compose -f docker-compose.dev.yml exec worker python -m searchos.dev_crawl_fixture --email demo@example.com --inline
+docker compose -f docker-compose.dev.yml exec api python -m searchos.dev_seed_gsc --email demo@example.com --site fixture
+```
+
+Open **Actions**, pick **Fixture site**, press **Re-plan** and check:
+
+- summary cards (open actions, by risk, expected extra clicks per 28 days, split into measured and prior);
+- each row: the page, the field, current against proposed text (removed words struck through, added words
+  underlined), "Why this?", expected gain with a confidence, and effort 1 to 5;
+- **Edit** a title to something far too long: the checks that fail are listed and nothing is saved;
+- **Approve** and **Reject** (a reason is required), one at a time and with the checkboxes for several;
+- the **Manual tasks** tab: checkboxes that stay ticked after a reload;
+- **Export CSV** and **Developer handoff** (a text you can paste into a ticket);
+- the autopilot switch only stores your choice and says "Deploying arrives in Phase 4";
+- reject an action, press **Re-plan** again: it is not proposed again for 90 days unless its priority rises 50% or more.
+
+For real AI text put `ANTHROPIC_API_KEY=...` (or `GEMINI_API_KEY=...` and `GEMINI_MODEL=...`) in `.env` and recreate
+`api` and `worker`. **Settings, AI** then shows the provider and whether a key is present (never the key itself)
+and lets an admin set the monthly token budget (default 2,000,000 per organisation).
+
+### 5.7 Automated tests
 
 Backend (uses the Postgres and Redis containers; it creates and drops its own throw-away database and uses Redis
 database 15, so your dev data is untouched):

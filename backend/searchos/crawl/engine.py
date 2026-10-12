@@ -35,6 +35,7 @@ log = logging.getLogger(__name__)
 HARD_PAGE_CAP = 10_000
 SITEMAP_ONLY_PRIORITY = 1000
 MAX_STORED_IMAGES = 200
+MAX_STORED_TEXT_CHARS = 30_000
 
 
 class CrawlAborted(Exception):
@@ -343,6 +344,7 @@ class Crawler:
         record.hreflang = parsed.hreflang
         record.word_count = parsed.word_count
         record.main_text_method = parsed.main_text_method
+        record.main_text = parsed.main_text[:MAX_STORED_TEXT_CHARS]
         record.structured_data = {
             "jsonld": parsed.jsonld,
             "jsonld_errors": parsed.jsonld_errors,

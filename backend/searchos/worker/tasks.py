@@ -33,6 +33,14 @@ def crawl_task(job_id: str) -> None:
     asyncio.run(run_job(uuid.UUID(job_id), crawl_handler))
 
 
+@app.task(name="searchos.plan.site")
+def plan_task(job_id: str) -> None:
+    """Re-plan one site's actions. Parameters (site id, trigger) live in the job payload."""
+    from searchos.worker.plan_job import plan_handler
+
+    asyncio.run(run_job(uuid.UUID(job_id), plan_handler))
+
+
 @app.task(name="searchos.gsc.sync")
 def gsc_sync_task(job_id: str) -> None:
     """Search Console backfill / incremental sync for one connection. Parameters live in the job payload."""

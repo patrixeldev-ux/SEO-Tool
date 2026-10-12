@@ -359,8 +359,8 @@ describe("reaching the audit", () => {
 
   it("sections that are not built yet say which phase brings them", async () => {
     const api = createFakeApi({ signedIn: true });
-    renderApp(api.client, "/actions");
-    expect(await screen.findByRole("heading", { name: "Coming in Phase 3" })).toBeInTheDocument();
+    renderApp(api.client, "/experiments");
+    expect(await screen.findByRole("heading", { name: "Coming in Phase 5" })).toBeInTheDocument();
   });
 
   it("shows Core Web Vitals per page (field preferred, INP only from real visitors) and lists checks that did not run", async () => {

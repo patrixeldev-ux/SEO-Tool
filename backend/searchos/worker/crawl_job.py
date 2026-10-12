@@ -61,6 +61,7 @@ def page_values(crawl_id: uuid.UUID, r: PageRecord) -> dict[str, Any]:
             "hreflang": r.hreflang,
             "word_count": r.word_count,
             "main_text_method": r.main_text_method,
+            "main_text": r.main_text or None,
             "structured_data": r.structured_data,
             "in_sitemap": r.in_sitemap,
             "extra": r.extra,
@@ -182,7 +183,7 @@ async def crawl_handler(ctx: JobContext) -> dict[str, Any]:
             raise RuntimeError(f"crawl {crawl_id} does not exist")
         crawl.status = CrawlStatus.running
         crawl.started_at = datetime.now(UTC)
-        start_url, page_limit = crawl.start_url, crawl.page_limit
+        start_url, page_limit, site_id = crawl.start_url, crawl.page_limit, crawl.site_id
         await session.commit()
 
     try:
@@ -249,6 +250,10 @@ async def crawl_handler(ctx: JobContext) -> dict[str, Any]:
                 )
             )
             await session.commit()
+        if status is CrawlStatus.done and ctx.payload.get("plan", True):
+            from searchos.worker.plan_job import trigger_plan_for_site
+
+            await trigger_plan_for_site(sessions, site_id, "audit")
         return {
             "crawl_id": str(crawl_id),
             "pages": outcome.pages_recorded,
