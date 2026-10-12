@@ -12,6 +12,7 @@ from searchos.api import (
     ai_settings,
     audits,
     auth,
+    deploy,
     health,
     integrations,
     jobs,
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_reports.router)
     app.include_router(actions.router)
     app.include_router(ai_settings.router)
+    app.include_router(deploy.router)
     app.include_router(jobs.router)
     if not settings.is_production:
         app.include_router(jobs.dev_router)
