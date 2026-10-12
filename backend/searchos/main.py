@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from searchos.api import audits, auth, health, integrations, jobs, orgs, search, sites
+from searchos.api import ai_reports, audits, auth, health, integrations, jobs, orgs, search, sites
 from searchos.core.config import get_settings
 from searchos.core.db import dispose_engine
 
@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(audits.router)
     app.include_router(integrations.router)
     app.include_router(search.router)
+    app.include_router(ai_reports.router)
     app.include_router(jobs.router)
     if not settings.is_production:
         app.include_router(jobs.dev_router)

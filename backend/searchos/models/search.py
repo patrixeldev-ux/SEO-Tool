@@ -131,3 +131,59 @@ class SearchInsights(Base):
     summary: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb")
     )
+
+
+class AiReportImport(Base):
+    """One uploaded CSV of a first-party AI report (Search Console Generative AI / Bing AI Performance)."""
+
+    __tablename__ = "ai_report_imports"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, primary_key=True, default=uuid.uuid4, server_default=sa.text("gen_random_uuid()")
+    )
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source: Mapped[str] = mapped_column(sa.String(16), nullable=False)  # gsc_genai | bing_ai
+    filename: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    # Which dimensions the file had: "date", "date+page", "page+query", ...
+    shape: Mapped[str] = mapped_column(sa.String(40), nullable=False)
+    row_count: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    date_min: Mapped[date | None] = mapped_column(sa.Date)
+    date_max: Mapped[date | None] = mapped_column(sa.Date)
+    columns: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
+    )
+    mapping: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb")
+    )
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.clock_timestamp()
+    )
+
+    __table_args__ = (sa.CheckConstraint("source IN ('gsc_genai', 'bing_ai')", name="source"),)
+
+
+class AiReportRow(Base):
+    """One metric value of an imported AI report: (date?, page?, query?, metric, value)."""
+
+    __tablename__ = "ai_report_rows"
+
+    id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    import_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("ai_report_imports.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    date: Mapped[date | None] = mapped_column(sa.Date)
+    page: Mapped[str | None] = mapped_column(sa.Text)
+    query: Mapped[str | None] = mapped_column(sa.Text)
+    metric: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    value: Mapped[float] = mapped_column(sa.Float, nullable=False)
+
+    __table_args__ = (sa.Index("ix_ai_report_rows_site_id_source_date", "site_id", "source", "date"),)
