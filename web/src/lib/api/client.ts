@@ -1,4 +1,15 @@
-import type { MeResponse, Org, RegisterInput, Site, TokenResponse } from "./types";
+import type {
+  Audit,
+  AuditChanges,
+  AuditIssues,
+  AuditPages,
+  MeResponse,
+  Org,
+  PageDetail,
+  RegisterInput,
+  Site,
+  TokenResponse,
+} from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -25,6 +36,8 @@ interface RequestOptions {
   body?: unknown;
   /** false = do not send the bearer token and never try a silent refresh (login, register, refresh itself). */
   auth?: boolean;
+  /** "blob" for file downloads (CSV export). */
+  as?: "json" | "blob";
 }
 
 const REFRESH_LOCK = "searchos-refresh";
@@ -76,7 +89,7 @@ export class ApiClient {
         this.onAuthLost?.();
       }
     }
-    return this.parse<T>(response);
+    return this.parse<T>(response, options.as);
   }
 
   private send(path: string, options: RequestOptions, useAuth: boolean): Promise<Response> {
@@ -92,9 +105,10 @@ export class ApiClient {
     });
   }
 
-  private async parse<T>(response: Response): Promise<T> {
+  private async parse<T>(response: Response, as: "json" | "blob" = "json"): Promise<T> {
     if (response.ok) {
       if (response.status === 204) return undefined as T;
+      if (as === "blob") return (await response.blob()) as T;
       return (await response.json()) as T;
     }
     let detail: unknown;
@@ -182,6 +196,55 @@ export class ApiClient {
 
   createSite(input: { domain: string; display_name?: string }): Promise<Site> {
     return this.request<Site>("/sites", { method: "POST", body: input });
+  }
+
+  // ---- audits ----
+  listAudits(siteId: string): Promise<Audit[]> {
+    return this.request<Audit[]>(`/sites/${siteId}/audits`);
+  }
+
+  startAudit(siteId: string, pageLimit?: number): Promise<Audit> {
+    return this.request<Audit>(`/sites/${siteId}/audits`, {
+      method: "POST",
+      body: pageLimit === undefined ? {} : { page_limit: pageLimit },
+    });
+  }
+
+  getAudit(auditId: string): Promise<Audit> {
+    return this.request<Audit>(`/audits/${auditId}`);
+  }
+
+  cancelAudit(auditId: string): Promise<Audit> {
+    return this.request<Audit>(`/audits/${auditId}/cancel`, { method: "POST" });
+  }
+
+  auditIssues(auditId: string): Promise<AuditIssues> {
+    return this.request<AuditIssues>(`/audits/${auditId}/issues`);
+  }
+
+  auditChanges(auditId: string): Promise<AuditChanges> {
+    return this.request<AuditChanges>(`/audits/${auditId}/changes`);
+  }
+
+  auditPages(
+    auditId: string,
+    params: { q?: string; withIssues?: boolean; limit?: number; offset?: number } = {},
+  ): Promise<AuditPages> {
+    const query = new URLSearchParams();
+    if (params.q) query.set("q", params.q);
+    if (params.withIssues) query.set("with_issues", "true");
+    query.set("limit", String(params.limit ?? 50));
+    query.set("offset", String(params.offset ?? 0));
+    return this.request<AuditPages>(`/audits/${auditId}/pages?${query.toString()}`);
+  }
+
+  auditPage(auditId: string, pageId: string): Promise<PageDetail> {
+    return this.request<PageDetail>(`/audits/${auditId}/pages/${pageId}`);
+  }
+
+  /** The CSV needs the bearer token, so it is fetched here and saved from a blob instead of a plain link. */
+  auditCsv(auditId: string): Promise<Blob> {
+    return this.request<Blob>(`/audits/${auditId}/export.csv`, { as: "blob" });
   }
 
   createOrg(name: string): Promise<Org> {
