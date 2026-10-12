@@ -17,6 +17,12 @@ WORKDIR /app
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-install-project
 
+# Chromium for the "is the content there without JavaScript?" audit check. Installed outside /app and
+# /opt/venv so a bind mount of the source never hides it.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY . .
 RUN uv sync --frozen
 

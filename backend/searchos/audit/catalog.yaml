@@ -1,0 +1,445 @@
+# Every audit check: what it means, why it matters and how to fix it. This file is the single source for
+# the severity/category/weights used in scoring, the text shown in the app, and docs/CHECKS.md
+# (regenerate with: uv run python -m searchos.audit.gen_docs).
+#
+# severity: critical | high | medium | low | info   (weights 10 / 5 / 2 / 1 / 0)
+# category: indexability | on_page | structured_data | performance | ai_readiness
+# applies_to: which URLs the check is evaluated on; the share of those that fail is what is scored.
+#   fetched_urls      every URL we requested (not those robots.txt kept us out of)
+#   responding_urls   URLs that returned an HTTP status
+#   html_pages        successful (2xx) HTML pages
+#   indexable_pages   html_pages that are not noindex
+#   https_pages       html_pages served over https
+#   internal_canonical_pages  indexable pages whose canonical points at the same site
+#   hreflang_pages    indexable pages that declare hreflang alternates
+#   sitemap_urls      every URL listed in the sitemap(s)
+#   sitemap_pages     sitemap URLs that were fetched as HTML pages
+#   article_pages     indexable pages that look like articles
+#   question_pages    indexable pages with a question heading (H2/H3)
+#   rendered_pages    pages that were also rendered in a real browser
+#   homepage          the homepage (1 when it loaded)
+#   site              the whole site (1)
+
+- id: HTTP_4XX
+  category: indexability
+  severity: high
+  title: Page returns a 4xx error
+  applies_to: responding_urls
+  why_it_matters: >-
+    Visitors and search engines hit an error page instead of content. Pages that errored are dropped from
+    search results, and every link pointing to them is wasted.
+  how_to_fix: >-
+    Restore the page, or redirect (301) the old address to the closest replacement. Then update or remove the
+    internal links that point to it.
+
+- id: HTTP_5XX
+  category: indexability
+  severity: critical
+  title: Page returns a 5xx server error
+  applies_to: responding_urls
+  why_it_matters: >-
+    The server failed to answer. Repeated server errors make search engines crawl the site less and can
+    remove the affected pages from the index.
+  how_to_fix: >-
+    Check the server or application logs for this URL, fix the underlying error, and confirm the page loads.
+    Ask your host if it keeps happening.
+
+- id: REDIRECT_CHAIN
+  category: indexability
+  severity: medium
+  title: Redirect chain (more than one hop)
+  applies_to: fetched_urls
+  why_it_matters: >-
+    Each extra redirect slows the page and loses a little of the link value. Search engines may stop
+    following a long chain.
+  how_to_fix: >-
+    Point the first URL straight at the final destination with a single 301, and update internal links to use
+    the final URL.
+
+- id: REDIRECT_LOOP
+  category: indexability
+  severity: critical
+  title: Redirect loop
+  applies_to: fetched_urls
+  why_it_matters: >-
+    The URL redirects back to itself through other URLs, so the page can never load. Browsers show an error
+    and search engines give up.
+  how_to_fix: >-
+    Find the redirect rules involved (server config, CMS or plugin) and remove the one that sends visitors
+    back. Test with a private browser window.
+
+- id: BROKEN_INTERNAL_LINK
+  category: indexability
+  severity: high
+  title: Page links to a broken internal URL
+  applies_to: html_pages
+  why_it_matters: >-
+    Broken links frustrate visitors, waste crawl budget and leak link value to nowhere.
+  how_to_fix: >-
+    Open the page, find the listed links, and either correct the address or remove the link. If the target
+    moved, add a 301 redirect.
+
+- id: CANONICAL_MISSING
+  category: indexability
+  severity: medium
+  title: Canonical tag missing
+  applies_to: indexable_pages
+  why_it_matters: >-
+    Without a canonical tag, search engines have to guess which address of the page is the main one, which
+    can split ranking signals between duplicates (with and without parameters, trailing slashes, and so on).
+  how_to_fix: >-
+    Add <link rel="canonical" href="https://your-site/the-page"> to the head, pointing at the page's own
+    preferred address. Most SEO plugins can do this for every page.
+
+- id: CANONICAL_TO_NON200
+  category: indexability
+  severity: high
+  title: Canonical points to a URL that is not a normal page
+  applies_to: internal_canonical_pages
+  why_it_matters: >-
+    The canonical target redirects, is missing or is an error page. Search engines then ignore the canonical
+    hint or drop the page.
+  how_to_fix: >-
+    Change the canonical to the final, working address of the page (a URL that answers 200 and is not itself
+    redirected).
+
+- id: CANONICAL_MISMATCH
+  category: indexability
+  severity: low
+  title: Canonical points to a different page
+  applies_to: internal_canonical_pages
+  why_it_matters: >-
+    This page tells search engines that another page is the main version, so this one is unlikely to rank. That
+    is right for duplicates and wrong when the page should rank on its own.
+  how_to_fix: >-
+    If the page is a real duplicate, nothing to do. If it should rank itself, change the canonical to its own
+    address.
+
+- id: NOINDEX_IN_SITEMAP
+  category: indexability
+  severity: high
+  title: Page is in the sitemap but marked noindex
+  applies_to: sitemap_pages
+  why_it_matters: >-
+    The sitemap asks search engines to index the page while the page itself says not to. The contradiction
+    wastes crawl budget and Search Console reports it as a warning.
+  how_to_fix: >-
+    Decide which signal is right. To keep the page out of search, remove it from the sitemap. To rank it,
+    remove the noindex tag or X-Robots-Tag header.
+
+- id: TITLE_MISSING
+  category: on_page
+  severity: high
+  title: Title tag missing
+  applies_to: indexable_pages
+  why_it_matters: >-
+    The title is the clickable headline in search results and the strongest on-page signal. Without it Google
+    makes up a title, usually a poor one.
+  how_to_fix: >-
+    Write a unique title of 30 to 60 characters that names the page's topic, and put it in the <title> tag.
+
+- id: TITLE_DUPLICATE
+  category: on_page
+  severity: medium
+  title: Duplicate title
+  applies_to: indexable_pages
+  why_it_matters: >-
+    Pages with identical titles compete with each other and are hard to tell apart in search results.
+  how_to_fix: >-
+    Give every page its own title that describes what is special about that page.
+
+- id: TITLE_LENGTH
+  category: on_page
+  severity: low
+  title: Title too short or too long
+  applies_to: indexable_pages
+  why_it_matters: >-
+    Titles over about 60 characters are cut off in search results; very short titles waste the best
+    on-page space for keywords.
+  how_to_fix: >-
+    Rewrite the title to be between 30 and 60 characters, with the main topic first.
+
+- id: META_DESC_MISSING
+  category: on_page
+  severity: medium
+  title: Meta description missing
+  applies_to: indexable_pages
+  why_it_matters: >-
+    The meta description is the text under the title in search results. Without it Google picks a random
+    snippet, which usually gets fewer clicks.
+  how_to_fix: >-
+    Write a unique summary of about 120 to 155 characters that tells people why to click, and add it as the
+    page's meta description.
+
+- id: META_DESC_DUPLICATE
+  category: on_page
+  severity: low
+  title: Duplicate meta description
+  applies_to: indexable_pages
+  why_it_matters: >-
+    The same description on several pages gives searchers no reason to choose one over the other.
+  how_to_fix: >-
+    Write a unique description for each page.
+
+- id: H1_MISSING
+  category: on_page
+  severity: medium
+  title: Main heading (H1) missing
+  applies_to: indexable_pages
+  why_it_matters: >-
+    The H1 tells readers and search engines what the page is about at a glance.
+  how_to_fix: >-
+    Add one H1 heading near the top of the page that states the topic.
+
+- id: H1_MULTIPLE
+  category: on_page
+  severity: low
+  title: More than one H1 heading
+  applies_to: indexable_pages
+  why_it_matters: >-
+    Several H1s blur the page's main topic. HTML allows it, but one clear main heading works best.
+  how_to_fix: >-
+    Keep one H1 and turn the others into H2 or H3 headings.
+
+- id: THIN_CONTENT
+  category: on_page
+  severity: medium
+  title: Thin content (under 250 words)
+  applies_to: indexable_pages
+  why_it_matters: >-
+    Pages with very little text rarely rank for anything and AI assistants have little to quote. This counts
+    the main text of the page without menus and footers, as it appears in the raw HTML.
+  how_to_fix: >-
+    Add useful, original content that answers what visitors came for. If the page is not meant to rank, mark
+    it noindex instead. If the text is added by JavaScript, make it part of the server-rendered HTML.
+
+- id: IMG_ALT_MISSING
+  category: on_page
+  severity: low
+  title: Image without alt text
+  applies_to: indexable_pages
+  why_it_matters: >-
+    Alt text describes images to screen readers and to search engines, and helps images appear in image
+    search. (An empty alt="" is fine for purely decorative images.)
+  how_to_fix: >-
+    Add a short, descriptive alt attribute to each meaningful image.
+
+- id: VIEWPORT_MISSING
+  category: on_page
+  severity: medium
+  title: Mobile viewport tag missing
+  applies_to: indexable_pages
+  why_it_matters: >-
+    Without it phones show a shrunken desktop page. Google indexes the mobile version of a site first.
+  how_to_fix: >-
+    Add <meta name="viewport" content="width=device-width, initial-scale=1"> to the head.
+
+- id: LANG_MISSING
+  category: on_page
+  severity: low
+  title: Page language not declared
+  applies_to: indexable_pages
+  why_it_matters: >-
+    The lang attribute helps browsers, screen readers and search engines pick the right language handling.
+  how_to_fix: >-
+    Add a lang attribute to the html tag, for example <html lang="en">.
+
+- id: HREFLANG_INVALID
+  category: on_page
+  severity: medium
+  title: Invalid hreflang annotation
+  applies_to: hreflang_pages
+  why_it_matters: >-
+    Search engines ignore hreflang tags that use wrong language codes or relative links, so visitors may be
+    shown the wrong language version.
+  how_to_fix: >-
+    Use valid codes (en, en-GB, x-default), absolute URLs, and list each code only once per page.
+
+- id: MIXED_CONTENT
+  category: indexability
+  severity: medium
+  title: Secure page loads insecure (http) resources
+  applies_to: https_pages
+  why_it_matters: >-
+    Browsers block or warn about insecure images, scripts and styles on a secure page, which breaks the page
+    and erodes trust.
+  how_to_fix: >-
+    Change the listed http:// addresses to https://, or host the files on your own secure domain.
+
+- id: TTFB_SLOW
+  category: performance
+  severity: medium
+  title: Slow server response (over 800 ms)
+  applies_to: indexable_pages
+  why_it_matters: >-
+    A slow first byte delays everything else and hurts Core Web Vitals, rankings and conversions. Measured
+    from our crawler, so it is a guide rather than an exact visitor experience.
+  how_to_fix: >-
+    Turn on page caching or a CDN, upgrade slow hosting, and look for heavy database queries or plugins on
+    this page.
+
+- id: SCHEMA_PARSE_ERROR
+  category: structured_data
+  severity: high
+  title: Structured data (JSON-LD) cannot be parsed
+  applies_to: html_pages
+  why_it_matters: >-
+    Broken JSON-LD is ignored entirely, so the page loses rich results and AI assistants cannot read its
+    facts.
+  how_to_fix: >-
+    Fix the syntax error shown (often a trailing comma or missing quote). Check it with Google's Rich Results
+    Test or schema.org's validator.
+
+- id: SCHEMA_REQUIRED_PROP_MISSING
+  category: structured_data
+  severity: medium
+  title: Structured data missing required properties
+  applies_to: html_pages
+  why_it_matters: >-
+    Incomplete markup is not eligible for rich results and gives AI assistants unreliable facts.
+  how_to_fix: >-
+    Add the missing properties listed (for example name, offers or author) to the JSON-LD for this page.
+
+- id: ANSWER_BLOCK_MISSING
+  category: ai_readiness
+  severity: low
+  title: Question heading without a short answer (heuristic)
+  applies_to: question_pages
+  why_it_matters: >-
+    AI assistants and featured snippets prefer a direct answer right under a question. This is a heuristic:
+    it looks for question-style H2/H3 headings that are not immediately followed by a paragraph of 80 words
+    or fewer.
+  how_to_fix: >-
+    Put a one to three sentence answer directly under the question, then expand below it.
+
+- id: AUTHOR_DATE_MISSING
+  category: ai_readiness
+  severity: low
+  title: Article without a visible author or date
+  applies_to: article_pages
+  why_it_matters: >-
+    Authorship and freshness are trust signals for readers, search engines and AI assistants deciding what to
+    cite.
+  how_to_fix: >-
+    Show the author's name and the publish date on the page and add author and datePublished to its Article
+    markup.
+
+- id: HTTPS_MISSING
+  category: indexability
+  severity: critical
+  title: Site is not served over HTTPS
+  applies_to: site
+  why_it_matters: >-
+    Browsers label http sites "Not secure", Google prefers https, and visitors do not trust or buy from
+    insecure sites.
+  how_to_fix: >-
+    Install an SSL certificate (most hosts offer one free) and redirect all http:// addresses to https://.
+
+- id: SITEMAP_MISSING
+  category: indexability
+  severity: medium
+  title: No XML sitemap found
+  applies_to: site
+  why_it_matters: >-
+    A sitemap tells search engines which pages exist and helps new pages get found faster.
+  how_to_fix: >-
+    Generate a sitemap (most SEO plugins do) and list it in robots.txt with a Sitemap: line.
+
+- id: ROBOTS_MISSING
+  category: indexability
+  severity: low
+  title: No robots.txt file
+  applies_to: site
+  why_it_matters: >-
+    Without robots.txt you cannot point crawlers to your sitemap or keep them out of private areas.
+  how_to_fix: >-
+    Create a robots.txt at the root of the site. A minimal one is "User-agent: *" followed by a Sitemap: line.
+
+- id: BLOCKED_IN_SITEMAP
+  category: indexability
+  severity: high
+  title: Sitemap URL is blocked by robots.txt
+  applies_to: sitemap_urls
+  why_it_matters: >-
+    The sitemap invites search engines to a page that robots.txt forbids them to visit. Neither signal can
+    be followed.
+  how_to_fix: >-
+    Remove the URL from the sitemap, or remove the matching Disallow rule if the page should be crawled.
+
+- id: ORPHAN_PAGE
+  category: indexability
+  severity: medium
+  title: Orphan page (in the sitemap, no internal links)
+  applies_to: sitemap_pages
+  why_it_matters: >-
+    Pages nobody links to are hard to discover and receive no link value from the rest of the site.
+  how_to_fix: >-
+    Link to the page from relevant pages and menus, or remove it from the sitemap if it is not needed.
+
+- id: DEEP_PAGE
+  category: indexability
+  severity: low
+  title: Page is more than 4 clicks from the homepage
+  applies_to: html_pages
+  why_it_matters: >-
+    Pages buried deep in the site are crawled less often and are seen as less important.
+  how_to_fix: >-
+    Add links from higher-level pages, category pages or the menu so the page is within 3 to 4 clicks.
+
+- id: ORG_SCHEMA_MISSING
+  category: structured_data
+  severity: medium
+  title: Homepage has no Organization structured data
+  applies_to: homepage
+  why_it_matters: >-
+    Organization markup tells search engines and AI assistants who you are, your logo and official profiles,
+    which helps knowledge panels and correct brand answers.
+  how_to_fix: >-
+    Add Organization (or LocalBusiness) JSON-LD with name, url and logo to the homepage.
+
+- id: AI_SEARCH_BOT_BLOCKED
+  category: ai_readiness
+  severity: high
+  title: robots.txt blocks AI search or assistant crawlers
+  applies_to: site
+  why_it_matters: >-
+    Bots such as OAI-SearchBot, PerplexityBot or Claude-SearchBot fetch pages to answer users' questions and
+    cite their sources. If they are blocked, your site cannot be quoted or linked in those answers.
+  how_to_fix: >-
+    Remove the Disallow rule for the listed bots in robots.txt unless blocking them is a deliberate choice.
+
+- id: AI_TRAINING_BOT_BLOCKED
+  category: ai_readiness
+  severity: info
+  title: robots.txt blocks AI training crawlers
+  applies_to: site
+  why_it_matters: >-
+    Bots such as GPTBot or ClaudeBot collect content to train AI models. Blocking them is a legitimate
+    choice and does not affect search or AI answers, so this is shown for information only.
+  how_to_fix: >-
+    Nothing to fix if intended. To allow training use, remove the Disallow rule for the listed bots.
+
+- id: LLMS_TXT
+  category: ai_readiness
+  severity: info
+  title: No llms.txt file (information only)
+  applies_to: site
+  why_it_matters: >-
+    llms.txt is a proposed file that summarises your site for AI tools. No major search or AI engine has
+    confirmed using it, so it is not scored.
+  how_to_fix: >-
+    Optional. If you want one, publish a short markdown file at /llms.txt describing the site and linking to
+    key pages.
+
+- id: JS_DEPENDENT_CONTENT
+  category: ai_readiness
+  severity: high
+  title: Main content only appears after JavaScript runs
+  applies_to: rendered_pages
+  why_it_matters: >-
+    Most AI crawlers (GPTBot, ClaudeBot, PerplexityBot) do not run JavaScript, so they see an almost empty
+    page. We compare the text in the raw HTML with the text in a real browser; flagged when the raw HTML
+    holds under half of it.
+  how_to_fix: >-
+    Render the content on the server (server-side rendering or static generation) so it is in the first HTML
+    response.

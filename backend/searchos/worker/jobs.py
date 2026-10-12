@@ -31,6 +31,16 @@ class JobContext:
     payload: dict[str, Any]
     _sessions: async_sessionmaker[AsyncSession]
 
+    @property
+    def sessions(self) -> async_sessionmaker[AsyncSession]:
+        return self._sessions
+
+    async def is_cancelled(self) -> bool:
+        """True once someone (the API) has cancelled this job; handlers poll this to stop early."""
+        async with self._sessions() as session:
+            status = await session.scalar(sa.select(Job.status).where(Job.id == self.job_id))
+        return status == JobStatus.cancelled
+
     async def set_progress(self, percent: int) -> None:
         """Persist progress immediately so API readers see it live."""
         value = max(0, min(100, int(percent)))
@@ -98,5 +108,8 @@ async def _finish(
     if progress is not None:
         values["progress"] = progress
     async with sessions() as session:
-        await session.execute(sa.update(Job).where(Job.id == job_id).values(**values))
+        # Only a running job can finish: a job cancelled meanwhile keeps its `cancelled` state.
+        await session.execute(
+            sa.update(Job).where(Job.id == job_id, Job.status == JobStatus.running).values(**values)
+        )
         await session.commit()

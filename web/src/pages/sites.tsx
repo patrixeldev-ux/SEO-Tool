@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Globe, Plus } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Globe, ListChecks, Play, Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { PageHeader } from "@/components/page-header";
@@ -17,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ApiError } from "@/lib/api/client";
 import type { Site } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth";
 
@@ -91,9 +93,25 @@ function AddSiteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
   );
 }
 
-function SiteRow({ site }: { site: Site }) {
+function isAlreadyRunning(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409;
+}
+
+function SiteRow({ site, canRun }: { site: Site; canRun: boolean }) {
+  const { client, activeOrg } = useAuth();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const run = useMutation({
+    mutationFn: () => client.startAudit(site.id),
+    onSettled: async (_data, error) => {
+      // 409 means an audit is already running: just show it.
+      if (error && !isAlreadyRunning(error)) return;
+      await queryClient.invalidateQueries({ queryKey: ["audits", activeOrg?.id, site.id] });
+      await navigate({ to: "/audit/$siteId", params: { siteId: site.id } });
+    },
+  });
   return (
-    <li className="flex items-center gap-4 px-5 py-4">
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4">
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
         <Globe className="size-4" />
       </span>
@@ -110,6 +128,23 @@ function SiteRow({ site }: { site: Site }) {
       <time className="hidden text-sm text-muted-foreground sm:block" dateTime={site.created_at}>
         Added {new Date(site.created_at).toLocaleDateString()}
       </time>
+      <div className="flex items-center gap-2">
+        {canRun && (
+          <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending} aria-label={`Run audit for ${site.display_name}`}>
+            <Play /> {run.isPending ? "Starting…" : "Run audit"}
+          </Button>
+        )}
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/audit/$siteId" params={{ siteId: site.id }} aria-label={`View audit for ${site.display_name}`}>
+            <ListChecks /> View audit
+          </Link>
+        </Button>
+      </div>
+      {run.isError && !isAlreadyRunning(run.error) && (
+        <p role="alert" className="basis-full text-sm text-destructive">
+          Could not start the audit: {run.error.message}
+        </p>
+      )}
     </li>
   );
 }
@@ -163,7 +198,7 @@ export function SitesPage() {
             </span>
             <h2 className="text-lg font-semibold">No sites yet</h2>
             <p className="text-sm text-muted-foreground">
-              Add your first website to get started. Crawling and audits arrive in the next release.
+              Add your first website to get started, then run an audit to see what to fix first.
             </p>
             {canCreate && (
               <Button onClick={() => setDialogOpen(true)}>
@@ -178,7 +213,7 @@ export function SitesPage() {
         <Card className="py-0">
           <ul className="divide-y" aria-label="Sites">
             {sites.data.map((site) => (
-              <SiteRow key={site.id} site={site} />
+              <SiteRow key={site.id} site={site} canRun={canCreate} />
             ))}
           </ul>
         </Card>

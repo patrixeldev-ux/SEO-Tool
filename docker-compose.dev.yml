@@ -14,8 +14,11 @@ x-backend: &backend
     REDIS_URL: redis://redis:6379/0
     # Bind mounts from Windows do not emit file-change events into the container; poll instead.
     WATCHFILES_FORCE_POLLING: "true"
+    # The test website used by `python -m searchos.dev_crawl_fixture`.
+    FIXTURE_DIR: /fixtures/site
   volumes:
     - ./backend:/app
+    - ./fixtures:/fixtures:ro
 
 services:
   postgres:

@@ -1,0 +1,93 @@
+{
+  "description": "AI crawlers checked against robots.txt. purpose: search/user_fetch (blocking hides the site from AI answers) or training (blocking is a legitimate choice). verified_on is the date the entry was checked against source_url; null means not yet re-verified.",
+  "bots": [
+    {
+      "name": "OAI-SearchBot",
+      "vendor": "OpenAI",
+      "purpose": "search",
+      "source_url": "https://developers.openai.com/api/docs/bots",
+      "verified_on": "2026-10-12",
+      "notes": "Surfaces sites in ChatGPT search; independent of GPTBot."
+    },
+    {
+      "name": "ChatGPT-User",
+      "vendor": "OpenAI",
+      "purpose": "user_fetch",
+      "source_url": "https://developers.openai.com/api/docs/bots",
+      "verified_on": "2026-10-12",
+      "notes": "User-initiated actions; OpenAI notes robots.txt rules may not apply."
+    },
+    {
+      "name": "GPTBot",
+      "vendor": "OpenAI",
+      "purpose": "training",
+      "source_url": "https://developers.openai.com/api/docs/bots",
+      "verified_on": "2026-10-12",
+      "notes": "Content that may be used to train OpenAI foundation models."
+    },
+    {
+      "name": "Claude-SearchBot",
+      "vendor": "Anthropic",
+      "purpose": "search",
+      "source_url": "https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+      "verified_on": "2026-10-12",
+      "notes": "Improves search result quality; disabling stops indexing for search."
+    },
+    {
+      "name": "Claude-User",
+      "vendor": "Anthropic",
+      "purpose": "user_fetch",
+      "source_url": "https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+      "verified_on": "2026-10-12",
+      "notes": "Fetches pages when a Claude user asks a question that needs them."
+    },
+    {
+      "name": "ClaudeBot",
+      "vendor": "Anthropic",
+      "purpose": "training",
+      "source_url": "https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+      "verified_on": "2026-10-12",
+      "notes": "Collects web content for model development; disallowing excludes future material from training."
+    },
+    {
+      "name": "PerplexityBot",
+      "vendor": "Perplexity",
+      "purpose": "search",
+      "source_url": "https://docs.perplexity.ai/guides/bots",
+      "verified_on": "2026-10-12",
+      "notes": "Surfaces and links sites in Perplexity search; not used for foundation-model training."
+    },
+    {
+      "name": "Perplexity-User",
+      "vendor": "Perplexity",
+      "purpose": "user_fetch",
+      "source_url": "https://docs.perplexity.ai/guides/bots",
+      "verified_on": "2026-10-12",
+      "notes": "User-initiated fetches; Perplexity says it generally ignores robots.txt."
+    },
+    {
+      "name": "Google-Extended",
+      "vendor": "Google",
+      "purpose": "training",
+      "source_url": "https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers",
+      "verified_on": "2026-10-12",
+      "notes": "Standalone robots.txt token (no own user agent). Controls use for Gemini training and grounding; does not affect Google Search inclusion or ranking."
+    },
+    {
+      "name": "Bingbot",
+      "vendor": "Microsoft",
+      "purpose": "search",
+      "source_url": "https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0",
+      "verified_on": null,
+      "notes": "Bing's search crawler (also feeds Bing-powered answers). NOT re-verified against the vendor page on 2026-10-12: the page could not be fetched in the build environment."
+    },
+    {
+      "name": "Applebot-Extended",
+      "vendor": "Apple",
+      "purpose": "training",
+      "source_url": "https://support.apple.com/en-us/119829",
+      "verified_on": null,
+      "notes": "Robots.txt token that opts content out of Apple foundation-model training; it does not crawl by itself. NOT re-verified against the vendor page on 2026-10-12: the page could not be fetched in the build environment."
+    }
+  ]
+}

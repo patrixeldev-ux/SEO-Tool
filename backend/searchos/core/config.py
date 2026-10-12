@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # CORS: comma-separated list of exact origins. Never "*" (we send credentials).
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
 
+    # Crawler politeness: requests per second to any single host (can be lowered per deployment).
+    crawl_rate_per_host: float = Field(default=2.0, gt=0, le=50)
+
     git_sha: str | None = None
 
     @field_validator("cors_origins", mode="before")

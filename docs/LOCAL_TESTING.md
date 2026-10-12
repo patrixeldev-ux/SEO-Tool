@@ -95,8 +95,8 @@ This is safe to run repeatedly. It prints the login:
 4. Toggle light/dark with the moon/sun button. Reload: the choice is remembered.
 5. Leave the page open for 15+ minutes (or just wait for the access token to expire) and click around: the app
    refreshes the session silently and you are not sent back to the login page.
-6. The other sidebar entries (Audit, Search Console, AI Visibility, Actions, Experiments, Content, Reports) are
-   intentionally empty placeholders in this phase.
+6. Search Console, AI Visibility, Actions, Experiments, Content and Reports show a "Coming in Phase N" card; they
+   are built in later phases. **Audit** is live: see 5.4.
 
 ### 5.2 API health
 
@@ -129,7 +129,25 @@ $job = Invoke-RestMethod -Method Post http://localhost:8000/jobs/demo -Headers $
 The `worker` container log shows the task being received. The `beat` container schedules a nightly cleanup of
 expired refresh tokens.
 
-### 5.4 Automated tests
+### 5.4 Audit a site (Phase 1)
+
+The real **Run audit** button (on each site row, and on the **Audit** page) crawls the site's own domain, so it
+needs a public website. To try the whole pipeline without one, audit the bundled test website
+(`fixtures/site`, a small coffee-shop site with planted problems). It runs inside the worker container, which
+also proves the browser used for the JavaScript check works in the image:
+
+```powershell
+docker compose -f docker-compose.dev.yml exec worker python -m searchos.dev_crawl_fixture --email demo@example.com --inline
+```
+
+It prints the score and the five category scores. Then open **Audit** in the app, pick **Fixture site
+(Harbor & Pine Coffee)** and look at the score, the issues grouped by severity (click one to see why it matters,
+how to fix it and the affected URLs; click a URL for the page details), the **Pages** tab and **Export CSV**.
+Run the command a second time and the page shows **Changes since the last audit**.
+
+The first build of the backend image is larger and slower than before because it now includes Chromium.
+
+### 5.5 Automated tests
 
 Backend (uses the Postgres and Redis containers; it creates and drops its own throw-away database and uses Redis
 database 15, so your dev data is untouched):

@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { AuditIndexPage, SiteAuditPage } from "@/pages/audit";
 import { ComingSoonPage } from "@/pages/coming-soon";
 import { LoginPage } from "@/pages/login";
 import { RegisterPage } from "@/pages/register";
@@ -23,6 +24,8 @@ const registerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/reg
 const appRoute = createRoute({ getParentRoute: () => rootRoute, id: "app", component: AppShell });
 
 const sitesRoute = createRoute({ getParentRoute: () => appRoute, path: "/sites", component: SitesPage });
+const auditIndexRoute = createRoute({ getParentRoute: () => appRoute, path: "/audit", component: AuditIndexPage });
+const siteAuditRoute = createRoute({ getParentRoute: () => appRoute, path: "/audit/$siteId", component: SiteAuditPage });
 const settingsRoute = createRoute({ getParentRoute: () => appRoute, path: "/settings", component: SettingsPage });
 
 function placeholder(path: string, title: string, description: string, phase: string) {
@@ -34,7 +37,6 @@ function placeholder(path: string, title: string, description: string, phase: st
 }
 
 const placeholderRoutes = [
-  placeholder("/audit", "Audit", "Technical, on-page and AI-readiness issues found by crawling your site.", "Phase 1"),
   placeholder(
     "/search-console",
     "Search Console",
@@ -52,7 +54,7 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   registerRoute,
-  appRoute.addChildren([sitesRoute, settingsRoute, ...placeholderRoutes]),
+  appRoute.addChildren([sitesRoute, auditIndexRoute, siteAuditRoute, settingsRoute, ...placeholderRoutes]),
 ]);
 
 export const router = createRouter({ routeTree });

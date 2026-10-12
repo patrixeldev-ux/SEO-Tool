@@ -1,0 +1,10 @@
+User-agent: *
+Disallow: /private/
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: PerplexityBot
+Disallow: /
+
+Sitemap: {{BASE_URL}}/sitemap.xml
