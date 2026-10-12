@@ -28,7 +28,7 @@ def parse(html: str, path: str = "/p.html") -> ParsedPage:
 
 def fixture_page(rel: str) -> ParsedPage:
     html = (default_fixture_dir() / rel).read_text(encoding="utf-8").replace("{{BASE_URL}}", BASE)
-    path = "/" + rel.removesuffix("index.html")
+    path = "/" + (rel[: -len("index.html")] if rel == "index.html" or rel.endswith("/index.html") else rel)
     return parse(html, path)
 
 

@@ -25,6 +25,14 @@ async def demo_handler(ctx: JobContext) -> dict[str, Any]:
     return {"steps_completed": steps}
 
 
+@app.task(name="searchos.crawl.run")
+def crawl_task(job_id: str) -> None:
+    """Crawl + audit one site. All parameters live in the `jobs` row payload."""
+    from searchos.worker.crawl_job import crawl_handler
+
+    asyncio.run(run_job(uuid.UUID(job_id), crawl_handler))
+
+
 @app.task(name="searchos.demo")
 def demo_task(job_id: str) -> None:
     asyncio.run(run_job(uuid.UUID(job_id), demo_handler))
