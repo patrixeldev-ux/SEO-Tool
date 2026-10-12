@@ -4,6 +4,7 @@ from searchos.models.integration import ConnectionStatus, IntegrationConnection,
 from searchos.models.job import Job, JobStatus
 from searchos.models.org import ROLE_RANK, Membership, Org, Role, role_at_least
 from searchos.models.refresh_token import RefreshToken
+from searchos.models.search import GscDailyTotal, GscRow
 from searchos.models.site import Site
 from searchos.models.user import User
 
@@ -14,6 +15,8 @@ __all__ = [
     "ConnectionStatus",
     "Crawl",
     "CrawlStatus",
+    "GscDailyTotal",
+    "GscRow",
     "IntegrationConnection",
     "Issue",
     "Job",

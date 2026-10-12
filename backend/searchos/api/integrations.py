@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 import sqlalchemy as sa
@@ -16,12 +16,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict
 
+from searchos.api.schemas import JobOut
 from searchos.core.config import Settings
 from searchos.core.crypto import DecryptionError, decrypt_json, encrypt_json, encryption_available
 from searchos.core.crypto import EncryptionUnavailableError as EncryptionUnavailableError
 from searchos.core.db import get_sessionmaker
 from searchos.core.deps import OrgContext, SessionDep, SettingsDep, require_role
-from searchos.integrations import google_oauth
+from searchos.integrations import google_oauth, gsc_sync
 from searchos.integrations.errors import (
     IntegrationError,
     NeedsReauthError,
@@ -32,6 +33,7 @@ from searchos.integrations.google_api import GoogleSession, list_properties, mat
 from searchos.models import (
     ConnectionStatus,
     IntegrationConnection,
+    Job,
     Membership,
     Provider,
     Role,
@@ -328,11 +330,36 @@ async def select_google_property(
             "That property isn't available to the connected Google account.",
         )
     await ctx.session.refresh(conn)  # the property call may have refreshed the stored token
+    changed = conn.property_url != chosen["site_url"]
     conn.property_url = chosen["site_url"]
     conn.status = ConnectionStatus.connected
     conn.last_error = None
     await ctx.session.commit()
+    if changed or "last_backfill_job_id" not in conn.meta:
+        # First data pull: 16 months, newest days first. Safe to call again: only one sync runs per site.
+        await gsc_sync.start_sync(ctx.session, conn, "backfill", ctx.user.id)
+        await ctx.session.refresh(conn)
     return conn
+
+
+class SyncIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["backfill", "incremental"] = "incremental"
+
+
+@router.post(
+    "/sites/{site_id}/integrations/google/sync", response_model=JobOut, status_code=status.HTTP_202_ACCEPTED
+)
+async def sync_google_now(site_id: uuid.UUID, body: SyncIn, ctx: AdminCtx) -> Job:
+    """Fetch new Search Console data now (or re-run the 16-month backfill to fill any gaps)."""
+    conn = await _google_connection(ctx, site_id)
+    if conn.status is not ConnectionStatus.connected or not conn.property_url:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Choose a Search Console property first.")
+    job = await gsc_sync.start_sync(ctx.session, conn, body.mode, ctx.user.id)
+    if job is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Google is not ready to sync.")
+    return job
 
 
 @router.delete("/sites/{site_id}/integrations/google", status_code=status.HTTP_204_NO_CONTENT)

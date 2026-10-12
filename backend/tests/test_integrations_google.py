@@ -8,7 +8,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import uuid
-from collections.abc import Iterator
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -31,16 +30,6 @@ from tests.conftest import auth, register
 CLIENT_ID = "test-client-id.apps.googleusercontent.com"
 CLIENT_SECRET = "test-client-secret"
 REDIRECT = "http://localhost:8000/integrations/google/callback"
-
-
-@pytest.fixture
-def google_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    monkeypatch.setenv("GOOGLE_CLIENT_ID", CLIENT_ID)
-    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", CLIENT_SECRET)
-    monkeypatch.setenv("WEB_BASE_URL", "http://web.test")
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
 
 
 async def make_site(client: AsyncClient, tokens: dict[str, Any], domain: str = "example.com") -> str:
