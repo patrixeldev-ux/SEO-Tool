@@ -39,6 +39,31 @@ class Settings(BaseSettings):
 
     git_sha: str | None = None
 
+    # --- Integrations (all optional: the app and every Phase 0-1 feature work when these are unset) ---
+    # Where the browser is sent after the Google consent screen (the web app's address).
+    web_base_url: str = "http://localhost:5173"
+    # Google OAuth client ("Web application") for Search Console. See docs/GOOGLE_SETUP.md.
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
+    google_redirect_uri: str = "http://localhost:8000/integrations/google/callback"
+    # Fernet key that encrypts stored OAuth tokens and API keys. In development it is derived from
+    # JWT_SECRET when unset (with a warning); in production the app refuses to store credentials without it.
+    token_encryption_key: SecretStr | None = None
+    # Optional PageSpeed Insights API key (raises the quota; PSI also works without a key, slowly).
+    psi_api_key: SecretStr | None = None
+    # Set to false to switch off the PageSpeed step of audits.
+    psi_enabled: bool = True
+
+    @field_validator(
+        "google_client_id", "google_client_secret", "token_encryption_key", "psi_api_key", mode="before"
+    )
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """`GOOGLE_CLIENT_ID=` (empty, as in .env.example) means "not configured"."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
@@ -74,6 +99,10 @@ class Settings(BaseSettings):
         if self.cookie_secure is not None:
             return self.cookie_secure
         return self.environment == "production"
+
+    @property
+    def google_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
 
     @property
     def is_production(self) -> bool:

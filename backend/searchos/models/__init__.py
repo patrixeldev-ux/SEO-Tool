@@ -1,5 +1,6 @@
 from searchos.models.base import Base
 from searchos.models.crawl import AuditSnapshot, Crawl, CrawlStatus, Issue, Link, Page
+from searchos.models.integration import ConnectionStatus, IntegrationConnection, Provider
 from searchos.models.job import Job, JobStatus
 from searchos.models.org import ROLE_RANK, Membership, Org, Role, role_at_least
 from searchos.models.refresh_token import RefreshToken
@@ -10,8 +11,10 @@ __all__ = [
     "ROLE_RANK",
     "AuditSnapshot",
     "Base",
+    "ConnectionStatus",
     "Crawl",
     "CrawlStatus",
+    "IntegrationConnection",
     "Issue",
     "Job",
     "JobStatus",
@@ -19,6 +22,7 @@ __all__ = [
     "Membership",
     "Org",
     "Page",
+    "Provider",
     "RefreshToken",
     "Role",
     "Site",
