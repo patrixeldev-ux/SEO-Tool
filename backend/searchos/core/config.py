@@ -54,8 +54,26 @@ class Settings(BaseSettings):
     # Set to false to switch off the PageSpeed step of audits.
     psi_enabled: bool = True
 
+    # --- AI suggestions (Phase 3). All optional: without a key the planner still lists every action and
+    # marks the ones that need a written value as "needs AI". Keys are set here, never in the web app.
+    llm_provider: Literal["anthropic", "gemini", "fake"] | None = None
+    anthropic_api_key: SecretStr | None = None
+    anthropic_model: str = "claude-sonnet-5-5"
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str | None = None
+    # Tokens an organisation may spend on AI calls per calendar month (changeable per organisation).
+    llm_default_monthly_token_budget: int = Field(default=2_000_000, ge=0)
+
     @field_validator(
-        "google_client_id", "google_client_secret", "token_encryption_key", "psi_api_key", mode="before"
+        "google_client_id",
+        "google_client_secret",
+        "token_encryption_key",
+        "psi_api_key",
+        "llm_provider",
+        "anthropic_api_key",
+        "gemini_api_key",
+        "gemini_model",
+        mode="before",
     )
     @classmethod
     def _blank_is_unset(cls, value: object) -> object:
@@ -92,6 +110,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET is the insecure development placeholder")
             if self.cookie_secure is False:
                 raise ValueError("COOKIE_SECURE=false is not allowed in production")
+            if self.llm_provider == "fake":
+                raise ValueError("LLM_PROVIDER=fake is for development and tests only")
         return self
 
     @property

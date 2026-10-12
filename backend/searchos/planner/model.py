@@ -111,6 +111,8 @@ class PlanContext:
     has_gsc: bool
     crawl_id: str | None = None
     robots_text: str | None = None
+    # target URL -> URLs of crawled pages that already link to it (loaded for pages that need inbound links).
+    linked_from: dict[str, frozenset[str]] = dc.field(default_factory=dict)
     # Findings the builders could not turn into an action, with the reason (shown in the plan summary).
     skipped: list[dict[str, Any]] = dc.field(default_factory=list)
 

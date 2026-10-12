@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from searchos.audit.model import PageData
 from searchos.crawl.urls import match_key
-from searchos.models import Crawl, CrawlStatus, GscRow, Issue, Opportunity, Page, SearchInsights, Site
+from searchos.models import Crawl, CrawlStatus, GscRow, Issue, Link, Opportunity, Page, SearchInsights, Site
 from searchos.planner.mapping import MAPPINGS
 from searchos.planner.model import Finding, GscPage, GscQuery, PlanContext, PlanPage
 from searchos.stats.ctr_curve import POSITIONS, CtrCurve
@@ -134,6 +134,23 @@ async def load_gsc(session: AsyncSession, site_id: uuid.UUID) -> dict[str, GscPa
     return pages
 
 
+LINK_NEED_SOURCES = frozenset({"ORPHAN_PAGE", "DEEP_PAGE", "STRIKING_DISTANCE"})
+
+
+async def load_linked_from(
+    session: AsyncSession, crawl_id: uuid.UUID, targets: list[str]
+) -> dict[str, frozenset[str]]:
+    rows = await session.execute(
+        sa.select(Page.normalised_url, Link.to_url)
+        .join(Link, Link.from_page_id == Page.id)
+        .where(Link.crawl_id == crawl_id, Link.is_internal.is_(True), Link.to_url.in_(targets))
+    )
+    found: dict[str, set[str]] = {}
+    for source, target in rows:
+        found.setdefault(target, set()).add(source)
+    return {t: frozenset(s) for t, s in found.items()}
+
+
 def curve_from_json(data: dict[str, object]) -> CtrCurve | None:
     values = data.get("values")
     confidence = data.get("confidence")
@@ -196,6 +213,12 @@ async def load_context(session: AsyncSession, site: Site) -> PlanContext:
             )
         )
 
+    linked_from: dict[str, frozenset[str]] = {}
+    if crawl is not None:
+        needing_links = sorted({f.url for f in findings if f.url and f.source in LINK_NEED_SOURCES})
+        if needing_links:
+            linked_from = await load_linked_from(session, crawl.id, needing_links)
+
     insights = await session.get(SearchInsights, site.id)
     curve = curve_from_json(insights.curve) if insights is not None else None
     gsc = await load_gsc(session, site.id)
@@ -214,4 +237,5 @@ async def load_context(session: AsyncSession, site: Site) -> PlanContext:
         has_gsc=insights is not None,
         crawl_id=str(crawl.id) if crawl is not None else None,
         robots_text=robots_text,
+        linked_from=linked_from,
     )

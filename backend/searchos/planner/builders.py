@@ -675,7 +675,14 @@ def build_noindex_review(ctx: PlanContext, findings: list[Finding]) -> list[Cand
     ]
 
 
+def _links_builder(ctx: PlanContext, findings: list[Finding]) -> list[Candidate]:
+    from searchos.planner.links import build_add_internal_links
+
+    return build_add_internal_links(ctx, findings)
+
+
 BUILDERS: dict[str, Builder] = {
+    "add_internal_links": _links_builder,
     "rewrite_title": build_rewrite_title,
     "rewrite_meta": build_rewrite_meta,
     "add_alt": build_add_alt,

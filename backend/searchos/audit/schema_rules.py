@@ -90,7 +90,7 @@ def rule_family(schema_type: str) -> str | None:
     return schema_type if schema_type in RULES else None
 
 
-def _present(value: Any) -> bool:
+def is_present(value: Any) -> bool:
     if value is None:
         return False
     if isinstance(value, str):
@@ -102,9 +102,9 @@ def _present(value: Any) -> bool:
 
 def missing_properties(entity: dict[str, Any], family: str) -> list[str]:
     rule = RULES[family]
-    missing = [prop for prop in rule.required if not _present(entity.get(prop))]
+    missing = [prop for prop in rule.required if not is_present(entity.get(prop))]
     for group in rule.one_of:
-        if not any(_present(entity.get(prop)) for prop in group):
+        if not any(is_present(entity.get(prop)) for prop in group):
             missing.append(" or ".join(group))
     return missing
 

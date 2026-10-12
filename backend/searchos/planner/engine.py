@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from searchos.audit.catalog import load_catalog
 from searchos.crawl.urls import match_key
+from searchos.llm import LLMProvider, get_provider, provider_status
 from searchos.models import Action, Site
 from searchos.planner import gain
 from searchos.planner.builders import BUILDERS
@@ -33,6 +34,7 @@ from searchos.planner.catalog import (
     ActionStatus,
     info_for,
 )
+from searchos.planner.generate import generate_values
 from searchos.planner.loader import load_context
 from searchos.planner.mapping import MAPPINGS
 from searchos.planner.model import Candidate, Finding, PlanContext
@@ -254,16 +256,63 @@ def reconcile(
     return stats
 
 
+async def generate_open_values(
+    sessions: async_sessionmaker[AsyncSession],
+    session: AsyncSession,
+    provider: LLMProvider | None,
+    ctx: PlanContext,
+    site: Site,
+    now: datetime,
+) -> dict[str, Any]:
+    """Ask the AI for the values that open actions still lack (or record why that is not possible)."""
+    open_rows = list(
+        (
+            await session.scalars(
+                sa.select(Action).where(Action.site_id == site.id, Action.status.in_(OPEN_STATUSES))
+            )
+        ).all()
+    )
+    status = provider_status()
+    summary = await generate_values(
+        sessions,
+        session,
+        provider,
+        ctx,
+        open_rows,
+        org_id=site.org_id,
+        site_id=site.id,
+        no_key_reason=status.problem or NO_KEY_REASON,
+        now=now,
+    )
+    await session.commit()
+    return summary
+
+
 # ---- entry point -----------------------------------------------------------------------------------
+class _Unset:
+    pass
+
+
+UNSET = _Unset()
+NO_KEY_REASON = (
+    "No AI key is set. Add ANTHROPIC_API_KEY (or GEMINI_API_KEY and GEMINI_MODEL) to .env, restart, and re-plan. "
+    "See Settings > AI."
+)
+
+
 async def plan_site(
     sessions: async_sessionmaker[AsyncSession],
     site_id: uuid.UUID,
     *,
     trigger: str = "manual",
     now: datetime | None = None,
+    provider: LLMProvider | _Unset | None = UNSET,
 ) -> dict[str, Any]:
-    """Re-plan one site. Returns the summary stored as the job's result."""
+    """Re-plan one site. Returns the summary stored as the job's result.
+
+    `provider` defaults to the one configured in the environment; pass None to plan without AI (tests)."""
     now = now or datetime.now(UTC)
+    ai: LLMProvider | None = get_provider() if isinstance(provider, _Unset) else provider
     async with sessions() as session:
         site = await session.get(Site, site_id)
         if site is None:
@@ -293,6 +342,8 @@ async def plan_site(
         stats = reconcile(session, ctx, priced, list(existing), org_id=site.org_id, site_id=site_id, now=now)
         await session.commit()
 
+        ai_summary = await generate_open_values(sessions, session, ai, ctx, site, now)
+
         counts = {
             status.value: n
             for status, n in (
@@ -313,5 +364,6 @@ async def plan_site(
         "obsolete": stats.obsolete,
         "skipped_rejected": stats.skipped_rejected,
         "by_status": counts,
+        "ai": ai_summary,
         "skipped": ctx.skipped[:50],
     }
