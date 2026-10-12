@@ -30,6 +30,7 @@ from searchos.models import (
     JobStatus,
     Link,
     Page,
+    PsiResult,
     Role,
     Site,
 )
@@ -47,6 +48,12 @@ ReadCtx = Annotated[OrgContext, Depends(require_role(Role.client_viewer))]
 WriteCtx = Annotated[OrgContext, Depends(require_role(Role.member))]
 
 URLS_PER_GROUP = 200  # affected URLs listed per check; the CSV export has all of them
+# Checks that need data from outside the crawl; with none, they are listed as "not run" instead of passed.
+NOT_RUN_REASONS = {
+    "CWV_LCP_POOR": "No PageSpeed Insights data for this audit (needs a public site; see Settings > Integrations).",
+    "CWV_INP_POOR": "No real-user (field) Interaction to Next Paint data for any tested page.",
+    "CWV_CLS_POOR": "No PageSpeed Insights data for this audit (needs a public site; see Settings > Integrations).",
+}
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
 
@@ -104,9 +111,18 @@ class PassedCheck(BaseModel):
     applicable: int
 
 
+class NotRunCheck(BaseModel):
+    check_id: str
+    title: str
+    severity: str
+    category: str
+    reason: str
+
+
 class IssuesOut(BaseModel):
     groups: list[IssueGroup]
     passed: list[PassedCheck]
+    not_run: list[NotRunCheck] = []
 
 
 class PageRow(BaseModel):
@@ -142,6 +158,20 @@ class PageIssue(BaseModel):
     details: dict[str, Any]
 
 
+class PsiOut(BaseModel):
+    """Core Web Vitals from PageSpeed Insights. `*_source` says field (real users) or lab (one simulated load)."""
+
+    lcp_ms: float | None
+    lcp_source: str | None
+    inp_ms: float | None
+    inp_source: str | None
+    cls: float | None
+    cls_source: str | None
+    performance_score: float | None
+    error: str | None
+    fetched_at: datetime
+
+
 class PageDetail(BaseModel):
     id: uuid.UUID
     url: str
@@ -164,6 +194,7 @@ class PageDetail(BaseModel):
     in_sitemap: bool
     inlinks_count: int
     schema_types: list[str]
+    psi: PsiOut | None = None
     issues: list[PageIssue]
     inlinks: list[LinkOut]
     outlinks: list[LinkOut]
@@ -358,9 +389,20 @@ async def audit_issues(audit_id: uuid.UUID, ctx: ReadCtx) -> IssuesOut:
 
     snap = await ctx.session.scalar(sa.select(AuditSnapshot).where(AuditSnapshot.crawl_id == crawl.id))
     passed: list[PassedCheck] = []
+    not_run: list[NotRunCheck] = []
     if snap:
         for check_id, stats in (snap.issue_counts.get("checks") or {}).items():
             info = catalog.get(check_id)
+            if info and stats.get("applicable", 0) == 0 and check_id in NOT_RUN_REASONS:
+                not_run.append(
+                    NotRunCheck(
+                        check_id=check_id,
+                        title=info.title,
+                        severity=info.severity,
+                        category=info.category,
+                        reason=NOT_RUN_REASONS[check_id],
+                    )
+                )
             if info and stats.get("failing", 0) == 0 and stats.get("applicable", 0) > 0:
                 passed.append(
                     PassedCheck(
@@ -372,7 +414,8 @@ async def audit_issues(audit_id: uuid.UUID, ctx: ReadCtx) -> IssuesOut:
                     )
                 )
         passed.sort(key=lambda p: (SEVERITY_ORDER.get(p.severity, 9), p.check_id))
-    return IssuesOut(groups=groups, passed=passed)
+    not_run.sort(key=lambda n: n.check_id)
+    return IssuesOut(groups=groups, passed=passed, not_run=not_run)
 
 
 @router.get("/audits/{audit_id}/pages", response_model=PagesOut)
@@ -457,6 +500,9 @@ async def audit_page(audit_id: uuid.UUID, page_id: uuid.UUID, ctx: ReadCtx) -> P
             .limit(100)
         )
     ).all()
+    psi_row = await ctx.session.scalar(
+        sa.select(PsiResult).where(PsiResult.crawl_id == crawl.id, PsiResult.url == page.normalised_url)
+    )
     sd = page.structured_data or {}
     types = sorted(
         {
@@ -488,6 +534,7 @@ async def audit_page(audit_id: uuid.UUID, page_id: uuid.UUID, ctx: ReadCtx) -> P
         in_sitemap=page.in_sitemap,
         inlinks_count=page.inlinks_count,
         schema_types=types,
+        psi=PsiOut.model_validate(psi_row, from_attributes=True) if psi_row else None,
         issues=[_page_issue(i) for i in issues],
         inlinks=[LinkOut(url=u, anchor=a or "", rel=r, page_id=pid) for u, a, r, pid in inlinks],
         outlinks=[LinkOut(url=u, anchor=a, rel=r, page_id=pid) for u, a, r, pid in outlinks],

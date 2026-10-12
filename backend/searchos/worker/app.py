@@ -32,6 +32,10 @@ app.conf.update(
             "task": "searchos.gsc.nightly",
             "schedule": crontab(hour=23, minute=30),
         },
+        "bing-nightly": {
+            "task": "searchos.bing.nightly",
+            "schedule": crontab(hour=23, minute=45),
+        },
     },
 )
 

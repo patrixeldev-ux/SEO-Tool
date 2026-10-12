@@ -213,6 +213,39 @@ POSITIVE: dict[str, tuple[Case, set[str]]] = {
         {"id:/a"},
     ),
     "TTFB_SLOW": (lambda: ([page("/a", ttfb_ms=801), page("/b", ttfb_ms=800)], None), {"id:/a"}),
+    "CWV_LCP_POOR": (
+        lambda: (
+            [
+                page("/a", extra={"psi": {"lcp_ms": 4001, "lcp_source": "field"}}),
+                page(
+                    "/b", extra={"psi": {"lcp_ms": 4000, "lcp_source": "field"}}
+                ),  # 4000 is still "needs improvement"
+                page("/c", extra={"psi": {"lcp_ms": 9000, "lcp_source": "lab"}}),
+            ],
+            None,
+        ),
+        {"id:/a", "id:/c"},
+    ),
+    "CWV_INP_POOR": (
+        lambda: (
+            [
+                page("/a", extra={"psi": {"inp_ms": 501, "inp_source": "field"}}),
+                page("/b", extra={"psi": {"inp_ms": 500, "inp_source": "field"}}),
+            ],
+            None,
+        ),
+        {"id:/a"},
+    ),
+    "CWV_CLS_POOR": (
+        lambda: (
+            [
+                page("/a", extra={"psi": {"cls": 0.26, "cls_source": "field"}}),
+                page("/b", extra={"psi": {"cls": 0.25, "cls_source": "field"}}),
+            ],
+            None,
+        ),
+        {"id:/a"},
+    ),
     "SCHEMA_PARSE_ERROR": (
         lambda: (
             [page("/a", structured_data={"jsonld_errors": ["Expecting value (line 1, column 2)"]})],
@@ -426,6 +459,18 @@ NEGATIVE: dict[str, Callable[[], tuple[list[PageData], SiteData | None]]] = {
         None,
     ),
     "TTFB_SLOW": lambda: ([page("/a", ttfb_ms=800), page("/b", ttfb_ms=None)], None),
+    "CWV_LCP_POOR": lambda: (
+        [page("/a", extra={"psi": {"lcp_ms": 2400, "lcp_source": "field"}}), page("/b")],  # /b: no PSI data
+        None,
+    ),
+    "CWV_INP_POOR": lambda: (
+        [page("/a", extra={"psi": {"inp_ms": 120, "inp_source": "field"}}), page("/b")],
+        None,
+    ),
+    "CWV_CLS_POOR": lambda: (
+        [page("/a", extra={"psi": {"cls": 0.02, "cls_source": "field"}}), page("/b")],
+        None,
+    ),
     "SCHEMA_PARSE_ERROR": lambda: (
         [page("/a", structured_data={"jsonld": [{"@type": "Thing"}], "jsonld_errors": []})],
         None,
@@ -535,7 +580,7 @@ def test_catalog_loads_and_every_registered_check_has_an_entry() -> None:
     registered = set(registered_checks())
     assert registered <= set(catalog), registered - set(catalog)
     assert set(catalog) <= registered, f"catalog entries without a check: {set(catalog) - registered}"
-    assert len(catalog) == 38
+    assert len(catalog) == 41
 
 
 def test_catalog_applies_to_matches_the_registry() -> None:
@@ -695,3 +740,26 @@ def test_js_check_needs_a_meaningful_amount_of_rendered_text() -> None:
 def test_orphan_check_ignores_the_homepage() -> None:
     pages = [page("/", in_sitemap=True, inlinks_count=0), page("/a", in_sitemap=True, inlinks_count=0)]
     assert failing("ORPHAN_PAGE", pages) == {"id:/a"}
+
+
+def test_cwv_checks_are_not_run_without_pagespeed_data_and_never_use_lab_inp() -> None:
+    pages = [page("/a"), page("/b", extra={"psi": {"lcp_ms": 1000, "lcp_source": "lab", "inp_ms": None}})]
+    for check_id in ("CWV_LCP_POOR", "CWV_INP_POOR", "CWV_CLS_POOR"):
+        outcome = run(check_id, [page("/a")], None)
+        assert outcome.applicable == 0 and not outcome.failures
+    # A page with only lab LCP is evaluated for LCP but not for INP or CLS.
+    assert run("CWV_LCP_POOR", pages, None).applicable == 1
+    assert run("CWV_INP_POOR", pages, None).applicable == 0
+    assert run("CWV_CLS_POOR", pages, None).applicable == 0
+
+
+def test_cwv_checks_skip_non_indexable_pages() -> None:
+    noindex = page("/a", robots_meta="noindex", extra={"psi": {"lcp_ms": 9000, "lcp_source": "field"}})
+    assert run("CWV_LCP_POOR", [noindex], None).applicable == 0
+
+
+def test_cwv_issue_details_carry_the_value_the_limit_and_the_source() -> None:
+    outcome = run(
+        "CWV_LCP_POOR", [page("/a", extra={"psi": {"lcp_ms": 5200.0, "lcp_source": "field"}})], None
+    )
+    assert outcome.failures[0].details == {"lcp_ms": 5200.0, "limit": 4000, "source": "field"}

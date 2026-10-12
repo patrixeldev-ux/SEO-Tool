@@ -224,6 +224,35 @@ def ttfb_slow(page: PageData, _audit: AuditInput) -> dict[str, Any] | None:
     return None
 
 
+# ---- Core Web Vitals (from PageSpeed Insights data attached to the crawl) -------------------------
+CWV_LCP_POOR_MS = 4000
+CWV_INP_POOR_MS = 500
+CWV_CLS_POOR = 0.25
+
+
+def _cwv(page: PageData, metric: str, source_key: str, value_key: str, limit: float) -> dict[str, Any] | None:
+    psi = page.extra.get("psi") or {}
+    value = psi.get(value_key)
+    if value is None or value <= limit:
+        return None
+    return {metric: value, "limit": limit, "source": psi.get(source_key)}
+
+
+@page_check("CWV_LCP_POOR", "psi_lcp_pages")
+def cwv_lcp_poor(page: PageData, _audit: AuditInput) -> dict[str, Any] | None:
+    return _cwv(page, "lcp_ms", "lcp_source", "lcp_ms", CWV_LCP_POOR_MS)
+
+
+@page_check("CWV_INP_POOR", "psi_inp_pages")
+def cwv_inp_poor(page: PageData, _audit: AuditInput) -> dict[str, Any] | None:
+    return _cwv(page, "inp_ms", "inp_source", "inp_ms", CWV_INP_POOR_MS)
+
+
+@page_check("CWV_CLS_POOR", "psi_cls_pages")
+def cwv_cls_poor(page: PageData, _audit: AuditInput) -> dict[str, Any] | None:
+    return _cwv(page, "cls", "cls_source", "cls", CWV_CLS_POOR)
+
+
 # ---- structured data ------------------------------------------------------------------------------
 @page_check("SCHEMA_PARSE_ERROR", "html_pages")
 def schema_parse_error(page: PageData, _audit: AuditInput) -> dict[str, Any] | None:

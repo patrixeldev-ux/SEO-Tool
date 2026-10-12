@@ -7,14 +7,15 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
+import httpx
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from searchos.api.schemas import JobOut
 from searchos.core.config import Settings
@@ -22,7 +23,7 @@ from searchos.core.crypto import DecryptionError, decrypt_json, encrypt_json, en
 from searchos.core.crypto import EncryptionUnavailableError as EncryptionUnavailableError
 from searchos.core.db import get_sessionmaker
 from searchos.core.deps import OrgContext, SessionDep, SettingsDep, require_role
-from searchos.integrations import google_oauth, gsc_sync
+from searchos.integrations import bing, bing_sync, google_oauth, gsc_sync
 from searchos.integrations.errors import (
     IntegrationError,
     NeedsReauthError,
@@ -374,6 +375,74 @@ async def disconnect_google(site_id: uuid.UUID, ctx: AdminCtx, settings: Setting
                 await google_oauth.revoke_token(tokens.refresh_token or tokens.access_token)
             except (DecryptionError, EncryptionUnavailableError):
                 pass  # nothing we can revoke; the stored copy is deleted below regardless
+        await ctx.session.delete(conn)
+        await ctx.session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---- Bing Webmaster ---------------------------------------------------------------------------------
+class BingKeyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    api_key: Annotated[SecretStr, Field(min_length=8, max_length=200)]
+    # The site as registered in Bing Webmaster Tools; defaults to https://<domain>/.
+    site_url: Annotated[str | None, Field(max_length=500)] = None
+
+
+def _default_bing_url(site: Site) -> str:
+    host = f"www.{site.domain}" if site.uses_www else site.domain
+    return f"https://{host}/"
+
+
+@router.put("/sites/{site_id}/integrations/bing", response_model=ConnectionOut)
+async def save_bing_key(site_id: uuid.UUID, body: BingKeyIn, ctx: AdminCtx) -> IntegrationConnection:
+    """Checks the key by fetching the site's statistics once, then stores it encrypted and keeps the data."""
+    if not encryption_available():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "TOKEN_ENCRYPTION_KEY is not set, so the key can't be stored safely."
+        )
+    site = await _site(ctx, site_id)
+    site_url = (body.site_url or "").strip() or _default_bing_url(site)
+    api_key = body.api_key.get_secret_value().strip()
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            await bing.sync_site(get_sessionmaker(), client, site.id, site_url, api_key)
+    except IntegrationError as exc:
+        raise _provider_http_error(exc) from None
+    conn = await get_connection(ctx, site_id, Provider.bing)
+    if conn is None:
+        conn = IntegrationConnection(
+            org_id=site.org_id, site_id=site.id, provider=Provider.bing, created_by=ctx.user.id
+        )
+        ctx.session.add(conn)
+    conn.credentials_encrypted = encrypt_json({"api_key": api_key})
+    conn.property_url = site_url
+    conn.account_label = "Bing Webmaster API key"
+    conn.status = ConnectionStatus.connected
+    conn.last_error = None
+    conn.last_sync_at = datetime.now(UTC)
+    await ctx.session.commit()
+    return conn
+
+
+@router.post(
+    "/sites/{site_id}/integrations/bing/sync", response_model=JobOut, status_code=status.HTTP_202_ACCEPTED
+)
+async def sync_bing_now(site_id: uuid.UUID, ctx: AdminCtx) -> Job:
+    await _site(ctx, site_id)
+    conn = await get_connection(ctx, site_id, Provider.bing)
+    job = await bing_sync.start_sync(ctx.session, conn, ctx.user.id) if conn else None
+    if job is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Bing is not connected for this site.")
+    return job
+
+
+@router.delete("/sites/{site_id}/integrations/bing", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_bing(site_id: uuid.UUID, ctx: AdminCtx) -> Response:
+    """Deletes the stored key. Statistics already imported are kept."""
+    await _site(ctx, site_id)
+    conn = await get_connection(ctx, site_id, Provider.bing)
+    if conn is not None:
         await ctx.session.delete(conn)
         await ctx.session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

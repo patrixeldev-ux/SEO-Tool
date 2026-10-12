@@ -210,6 +210,18 @@
   ],
   "not_exercised": [
     {
+      "check_id": "CWV_CLS_POOR",
+      "reason": "Needs PageSpeed Insights data, which only exists for real public sites; the fixture crawl has none, so the check is 'not run'. Covered by unit tests and the PSI job test."
+    },
+    {
+      "check_id": "CWV_INP_POOR",
+      "reason": "Needs PageSpeed Insights field data (never estimated from lab data); the fixture crawl has none, so the check is 'not run'. Covered by unit tests."
+    },
+    {
+      "check_id": "CWV_LCP_POOR",
+      "reason": "Needs PageSpeed Insights data, which only exists for real public sites; the fixture crawl has none, so the check is 'not run'. Covered by unit tests and the PSI job test."
+    },
+    {
       "check_id": "MIXED_CONTENT",
       "reason": "Needs an HTTPS page that loads http:// resources; the fixture server speaks plain HTTP."
     },

@@ -187,3 +187,64 @@ class AiReportRow(Base):
     value: Mapped[float] = mapped_column(sa.Float, nullable=False)
 
     __table_args__ = (sa.Index("ix_ai_report_rows_site_id_source_date", "site_id", "source", "date"),)
+
+
+class PsiResult(Base):
+    """PageSpeed Insights result for one URL of one audit (mobile). Field data preferred, lab as fallback."""
+
+    __tablename__ = "psi_results"
+
+    id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    crawl_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("crawls.id", ondelete="CASCADE"), nullable=False
+    )
+    url: Mapped[str] = mapped_column(sa.Text, nullable=False)  # the crawled page's normalised URL
+    strategy: Mapped[str] = mapped_column(sa.String(10), nullable=False, default="mobile")
+    lcp_ms: Mapped[float | None] = mapped_column(sa.Float)
+    lcp_source: Mapped[str | None] = mapped_column(sa.String(5))  # field | lab
+    inp_ms: Mapped[float | None] = mapped_column(sa.Float)  # field data only: never estimated from lab
+    inp_source: Mapped[str | None] = mapped_column(sa.String(5))
+    cls: Mapped[float | None] = mapped_column(sa.Float)
+    cls_source: Mapped[str | None] = mapped_column(sa.String(5))
+    performance_score: Mapped[float | None] = mapped_column(sa.Float)  # Lighthouse lab score 0-100
+    error: Mapped[str | None] = mapped_column(sa.Text)
+    fetched_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.clock_timestamp()
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("crawl_id", "url", "strategy", name="uq_psi_results_crawl_id_url_strategy"),
+        sa.CheckConstraint("lcp_source IS NULL OR lcp_source IN ('field', 'lab')", name="lcp_source"),
+        sa.CheckConstraint("inp_source IS NULL OR inp_source = 'field'", name="inp_source"),
+        sa.CheckConstraint("cls_source IS NULL OR cls_source IN ('field', 'lab')", name="cls_source"),
+    )
+
+
+class BingRow(Base):
+    """Bing Webmaster query/page statistics. Bing reports in weekly buckets: `date` is the bucket's date."""
+
+    __tablename__ = "bing_rows"
+
+    id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(sa.String(5), nullable=False)  # query | page
+    date: Mapped[date] = mapped_column(sa.Date, nullable=False)
+    key: Mapped[str] = mapped_column(sa.Text, nullable=False)  # the query text, or the page URL
+    clicks: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    impressions: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    avg_click_position: Mapped[float | None] = mapped_column(sa.Float)
+    avg_impression_position: Mapped[float | None] = mapped_column(sa.Float)
+    ingested_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.clock_timestamp()
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint("kind IN ('query', 'page')", name="kind"),
+        sa.Index("uq_bing_rows_dims", "site_id", "kind", "date", sa.func.md5(sa.column("key")), unique=True),
+        sa.Index("ix_bing_rows_site_id_kind_date", "site_id", "kind", "date"),
+    )

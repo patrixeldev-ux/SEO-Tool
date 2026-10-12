@@ -7,9 +7,11 @@ from searchos.models.refresh_token import RefreshToken
 from searchos.models.search import (
     AiReportImport,
     AiReportRow,
+    BingRow,
     GscDailyTotal,
     GscRow,
     Opportunity,
+    PsiResult,
     SearchInsights,
 )
 from searchos.models.site import Site
@@ -21,6 +23,7 @@ __all__ = [
     "AiReportRow",
     "AuditSnapshot",
     "Base",
+    "BingRow",
     "ConnectionStatus",
     "Crawl",
     "CrawlStatus",
@@ -36,6 +39,7 @@ __all__ = [
     "Org",
     "Page",
     "Provider",
+    "PsiResult",
     "RefreshToken",
     "Role",
     "SearchInsights",
