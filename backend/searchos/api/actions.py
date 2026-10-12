@@ -8,15 +8,18 @@ from typing import Annotated, Any
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status as http_status
 from pydantic import BaseModel
 
+from searchos.api.schemas import JobOut
 from searchos.core.deps import OrgContext, require_role
-from searchos.models import Action, Role, Site
+from searchos.models import Action, Job, Role, Site
 from searchos.planner.catalog import ACTION_TYPES, ActionStatus, RiskClass
 
 router = APIRouter(prefix="/sites/{site_id}/actions", tags=["actions"])
 
 ReadCtx = Annotated[OrgContext, Depends(require_role(Role.client_viewer))]
+WriteCtx = Annotated[OrgContext, Depends(require_role(Role.member))]
 MAX_LIMIT = 2000
 
 
@@ -114,3 +117,12 @@ async def list_actions(
     query = query.order_by(Action.priority.desc(), Action.created_at, Action.id).limit(limit).offset(offset)
     rows = (await ctx.session.scalars(query)).all()
     return [action_out(a) for a in rows]
+
+
+@router.post("/replan", response_model=JobOut, status_code=http_status.HTTP_202_ACCEPTED)
+async def replan(site_id: uuid.UUID, ctx: WriteCtx) -> Job:
+    """Queue a fresh plan from the latest audit and Search Console data. Rejected actions stay rejected."""
+    from searchos.worker.launch import start_plan
+
+    site = await site_or_404(ctx, site_id)
+    return await start_plan(ctx.session, site.id, site.org_id, trigger="manual", created_by=ctx.user.id)

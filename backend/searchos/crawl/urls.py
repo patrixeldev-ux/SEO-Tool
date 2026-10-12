@@ -90,3 +90,15 @@ def path_of(url: str) -> str:
     """Path plus query of a URL, used in reports and in the fixture expectations."""
     parts = urlsplit(url)
     return parts.path + (f"?{parts.query}" if parts.query else "") or "/"
+
+
+def match_key(url: str) -> str:
+    """Compare Search Console and crawler URLs without scheme, 'www.' or trailing-slash differences."""
+    try:
+        norm = normalise_url(url)
+    except InvalidUrlError:
+        norm = url
+    rest = norm.split("://", 1)[-1].lower()
+    if rest.startswith("www."):
+        rest = rest[4:]
+    return rest.rstrip("/") or rest
