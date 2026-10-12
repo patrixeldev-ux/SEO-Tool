@@ -95,8 +95,8 @@ This is safe to run repeatedly. It prints the login:
 4. Toggle light/dark with the moon/sun button. Reload: the choice is remembered.
 5. Leave the page open for 15+ minutes (or just wait for the access token to expire) and click around: the app
    refreshes the session silently and you are not sent back to the login page.
-6. Search Console, AI Visibility, Actions, Experiments, Content and Reports show a "Coming in Phase N" card; they
-   are built in later phases. **Audit** is live: see 5.4.
+6. AI Visibility, Actions, Experiments, Content and Reports show a "Coming in Phase N" card; they are built in
+   later phases. **Audit** is live (see 5.4) and so is **Search Console** (see 5.5).
 
 ### 5.2 API health
 
@@ -147,7 +147,32 @@ Run the command a second time and the page shows **Changes since the last audit*
 
 The first build of the backend image is larger and slower than before because it now includes Chromium.
 
-### 5.5 Automated tests
+### 5.5 Search Console, opportunities, Bing and PageSpeed (Phase 2)
+
+You can look at the whole Search Console area **without a Google account** by loading made-up but realistic data
+(16 months of daily numbers, built so every kind of opportunity has something to find):
+
+```powershell
+docker compose -f docker-compose.dev.yml exec api python -m searchos.dev_seed_gsc --email demo@example.com
+```
+
+Open **Search Console**, pick **Harbor & Pine Coffee (demo search data)** and check:
+
+- four line charts (clicks, impressions, CTR, position) with a 28 days / 3 months / 16 months switch; the note
+  under them says the totals include queries Google hides, so the tables add up to less;
+- **Top queries** / **Top pages**, and the **Real searches / All / Conversational only** switch (the
+  conversational queries such as "yes" and "tell me more" are a heuristic and are labelled as one);
+- the **Opportunities** tab with all four kinds (striking distance, click-through gap, losing clicks, pages
+  competing), each with a plain explanation and an **Evidence** section;
+- click a page for its queries, positions and CTR against your own curve;
+- the **AI reports** tab: upload a file from `fixtures/ai_reports/` (these are made-up examples, not real exports).
+
+Connecting a **real** property needs the one-time Google setup in [GOOGLE_SETUP.md](GOOGLE_SETUP.md) (also available
+inside the app at Settings, Integrations, "Open the setup guide"). Without it the app says "Google isn't set up
+yet" and everything else keeps working. After connecting, compare the totals on the Search Console page with
+Search Console's own Performance report for the same dates: they should match within 1%.
+
+### 5.6 Automated tests
 
 Backend (uses the Postgres and Redis containers; it creates and drops its own throw-away database and uses Redis
 database 15, so your dev data is untouched):

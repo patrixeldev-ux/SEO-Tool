@@ -3,8 +3,10 @@ import { createRootRoute, createRoute, createRouter, Outlet, redirect } from "@t
 import { AppShell } from "@/components/layout/app-shell";
 import { AuditIndexPage, SiteAuditPage } from "@/pages/audit";
 import { ComingSoonPage } from "@/pages/coming-soon";
+import { GoogleSetupPage } from "@/pages/help";
 import { LoginPage } from "@/pages/login";
 import { RegisterPage } from "@/pages/register";
+import { SearchConsoleIndexPage, SiteSearchPage } from "@/pages/search-console";
 import { SettingsPage } from "@/pages/settings";
 import { SitesPage } from "@/pages/sites";
 
@@ -26,6 +28,9 @@ const appRoute = createRoute({ getParentRoute: () => rootRoute, id: "app", compo
 const sitesRoute = createRoute({ getParentRoute: () => appRoute, path: "/sites", component: SitesPage });
 const auditIndexRoute = createRoute({ getParentRoute: () => appRoute, path: "/audit", component: AuditIndexPage });
 const siteAuditRoute = createRoute({ getParentRoute: () => appRoute, path: "/audit/$siteId", component: SiteAuditPage });
+const searchIndexRoute = createRoute({ getParentRoute: () => appRoute, path: "/search-console", component: SearchConsoleIndexPage });
+const siteSearchRoute = createRoute({ getParentRoute: () => appRoute, path: "/search-console/$siteId", component: SiteSearchPage });
+const googleSetupRoute = createRoute({ getParentRoute: () => appRoute, path: "/help/google-setup", component: GoogleSetupPage });
 const settingsRoute = createRoute({ getParentRoute: () => appRoute, path: "/settings", component: SettingsPage });
 
 function placeholder(path: string, title: string, description: string, phase: string) {
@@ -37,12 +42,6 @@ function placeholder(path: string, title: string, description: string, phase: st
 }
 
 const placeholderRoutes = [
-  placeholder(
-    "/search-console",
-    "Search Console",
-    "Clicks, impressions and ranking opportunities from Google Search Console and Bing.",
-    "Phase 2",
-  ),
   placeholder("/ai-visibility", "AI Visibility", "How often AI answer engines mention and cite your brand, with confidence intervals.", "Phase 6"),
   placeholder("/actions", "Actions", "The prioritised plan of fixes, with approve, edit and reject.", "Phase 3"),
   placeholder("/experiments", "Experiments", "Did each change actually help? Treated pages versus matched controls.", "Phase 5"),
@@ -54,7 +53,16 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   registerRoute,
-  appRoute.addChildren([sitesRoute, auditIndexRoute, siteAuditRoute, settingsRoute, ...placeholderRoutes]),
+  appRoute.addChildren([
+    sitesRoute,
+    auditIndexRoute,
+    siteAuditRoute,
+    searchIndexRoute,
+    siteSearchRoute,
+    googleSetupRoute,
+    settingsRoute,
+    ...placeholderRoutes,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree });

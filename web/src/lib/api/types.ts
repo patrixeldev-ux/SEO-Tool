@@ -104,9 +104,32 @@ export interface PassedCheck {
   applicable: number;
 }
 
+export interface NotRunCheck {
+  check_id: string;
+  title: string;
+  severity: Severity;
+  category: Category;
+  reason: string;
+}
+
 export interface AuditIssues {
   groups: IssueGroup[];
   passed: PassedCheck[];
+  /** Checks that could not run (for example Core Web Vitals without PageSpeed data), each with the reason. */
+  not_run?: NotRunCheck[];
+}
+
+/** Core Web Vitals from PageSpeed Insights; `*_source` is "field" (real visitors) or "lab" (one simulated load). */
+export interface PsiResult {
+  lcp_ms: number | null;
+  lcp_source: "field" | "lab" | null;
+  inp_ms: number | null;
+  inp_source: "field" | null;
+  cls: number | null;
+  cls_source: "field" | "lab" | null;
+  performance_score: number | null;
+  error: string | null;
+  fetched_at: string;
 }
 
 export interface PageRow {
@@ -168,6 +191,7 @@ export interface PageDetail {
   inlinks: LinkInfo[];
   outlinks: LinkInfo[];
   outlinks_total: number;
+  psi?: PsiResult | null;
 }
 
 export interface ChangeItem {
@@ -186,4 +210,221 @@ export interface AuditChanges {
   fixed: ChangeItem[];
   persisting_count: number;
   not_rechecked_count: number;
+}
+
+// ---- integrations ---------------------------------------------------------------------------------
+export type ConnectionStatus = "pending" | "connected" | "needs_reauth" | "error";
+
+export interface Connection {
+  id: string;
+  provider: "google" | "bing";
+  status: ConnectionStatus;
+  account_label: string | null;
+  property_url: string | null;
+  last_sync_at: string | null;
+  last_error: string | null;
+  meta: Record<string, unknown>;
+}
+
+export interface PsiStatus {
+  enabled: boolean;
+  key_configured: boolean;
+}
+
+export interface SiteIntegrations {
+  google: Connection | null;
+  bing: Connection | null;
+  psi: PsiStatus;
+}
+
+export interface ProviderStatus {
+  configured: boolean;
+  message: string;
+}
+
+export interface IntegrationStatus {
+  google: ProviderStatus;
+  encryption: ProviderStatus;
+  psi: PsiStatus;
+  redirect_uri: string;
+  setup_guide: string;
+}
+
+export interface GoogleProperty {
+  site_url: string;
+  permission_level: string;
+  usable: boolean;
+}
+
+export interface GoogleProperties {
+  properties: GoogleProperty[];
+  suggested: string | null;
+  selected: string | null;
+}
+
+export interface SyncJob {
+  id: string;
+  type: string;
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
+  progress: number;
+  error: string | null;
+  payload: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+}
+
+export interface SearchCoverage {
+  connected: boolean;
+  property_url: string | null;
+  first_day: string | null;
+  last_day: string | null;
+  days_stored: number;
+  days_expected: number;
+  active_job: SyncJob | null;
+  last_job: SyncJob | null;
+  last_sync_at: string | null;
+  last_error: string | null;
+}
+
+// ---- search data ----------------------------------------------------------------------------------
+export type SearchRange = "28d" | "3m" | "16m";
+export type SearchSegment = "real" | "all" | "conversational";
+
+export interface TotalsDay {
+  date: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number | null;
+}
+
+export interface TotalsSummary {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number | null;
+  days: number;
+}
+
+export interface SearchTotals {
+  range: SearchRange;
+  start: string | null;
+  end: string | null;
+  series: TotalsDay[];
+  summary: TotalsSummary | null;
+  previous: TotalsSummary | null;
+  note: string;
+}
+
+export interface SearchTableRow {
+  key: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  is_conversational: boolean;
+}
+
+export interface SearchTable {
+  range: SearchRange;
+  segment: SearchSegment;
+  start: string | null;
+  end: string | null;
+  total: number;
+  rows: SearchTableRow[];
+  conversational_impressions: number;
+  all_impressions: number;
+  note: string;
+}
+
+export type OpportunityType = "STRIKING_DISTANCE" | "CTR_GAP" | "DECAY" | "CANNIBALISATION";
+
+export interface Opportunity {
+  id: string;
+  type: OpportunityType;
+  title: string;
+  page: string | null;
+  query: string | null;
+  score: number;
+  explanation: string;
+  evidence: Record<string, unknown>;
+}
+
+export interface Opportunities {
+  computed: boolean;
+  computed_at: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  counts: Partial<Record<OpportunityType, number>>;
+  skipped: Partial<Record<OpportunityType, string>>;
+  curve_summary: "site" | "pooled" | "default" | null;
+  total: number;
+  items: Opportunity[];
+}
+
+export interface CtrCurve {
+  positions: number[];
+  values: number[];
+  confidence: string[];
+  impressions: number[];
+  summary: string;
+  computed_at: string | null;
+  window_start: string | null;
+  window_end: string | null;
+}
+
+export interface PageQueryRow {
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  expected_ctr: number;
+  vs_curve: number;
+  is_conversational: boolean;
+}
+
+export interface SearchPageDetail {
+  page: string;
+  range: SearchRange;
+  segment: SearchSegment;
+  start: string | null;
+  end: string | null;
+  summary: TotalsSummary | null;
+  expected_ctr: number | null;
+  curve_confidence: string | null;
+  series: { date: string; clicks: number; impressions: number; position: number | null }[];
+  queries: PageQueryRow[];
+  opportunities: Opportunity[];
+  curve: CtrCurve;
+}
+
+// ---- AI reports (CSV imports) -----------------------------------------------------------------------
+export type AiReportSource = "gsc_genai" | "bing_ai";
+
+export interface AiReportImport {
+  id: string;
+  source: string;
+  filename: string;
+  shape: string;
+  row_count: number;
+  date_min: string | null;
+  date_max: string | null;
+  columns: string[];
+  created_at: string;
+  metrics?: string[];
+  extra_metrics?: string[];
+  skipped_rows?: number;
+  warnings?: string[];
+  replaced_rows?: number;
+}
+
+export interface AiReport {
+  source: AiReportSource;
+  imports: AiReportImport[];
+  metrics: string[];
+  primary_metric: string | null;
+  series_shape: string | null;
+  series: { date: string; values: Record<string, number> }[];
+  top_pages: { key: string; values: Record<string, number> }[];
+  top_queries: { key: string; values: Record<string, number> }[];
 }
