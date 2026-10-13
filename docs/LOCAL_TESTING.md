@@ -266,6 +266,14 @@ pnpm dev
 Tests and linters from `backend\`: `uv run ruff check .`, `uv run mypy searchos`, `uv run pytest`.
 From `web\`: `pnpm typecheck`, `pnpm test`, `pnpm build`.
 
+### Deploy smoke run (no Cloudflare, WordPress or GitHub needed)
+
+`uv run python -m searchos.dev_deploy_smoke` (from `backend\`, with PostgreSQL and Redis running) starts a throw-away
+database, the real API and Celery worker, and a pretend website that behaves like the Cloudflare Worker. It then
+approves a change, deploys it, lets the worker verify it in the page's raw HTML, rolls it back, runs the daily
+autopilot task and rolls that back too. It prints one line per step and exits 0 when all pass. Ports 18080 and 18081
+must be free. The ownership proof and the Worker test are marked as passed directly in its own database.
+
 ## 7. Troubleshooting
 
 | Symptom | Fix |

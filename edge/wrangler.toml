@@ -1,0 +1,23 @@
+# SearchOS edge Worker - template. Copy the values from SearchOS (Settings > Deploy > Cloudflare).
+# Full steps: docs/DEPLOY_CLOUDFLARE.md
+name = "searchos-edge"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# 1. Replace example.com with your domain. The route must be on a zone that is on your Cloudflare account.
+routes = [
+  { pattern = "example.com/*", zone_name = "example.com" }
+]
+
+# 2. Create the KV namespace (npx wrangler kv namespace create RULES) and paste its id here.
+[[kv_namespaces]]
+binding = "RULES"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[vars]
+# 3. Both values are shown in SearchOS. SITE_TOKEN is not secret; the signing secret is set with
+#    `npx wrangler secret put SIGNING_SECRET` (never write it in this file).
+API_BASE = "https://api.example.com"
+SITE_TOKEN = "REPLACE_WITH_SITE_TOKEN"
+# Emergency off switch: set to "1", run `npx wrangler deploy`, and every page passes through unchanged.
+SEARCHOS_DISABLED = "0"

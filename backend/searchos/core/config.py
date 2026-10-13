@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     # Tokens an organisation may spend on AI calls per calendar month (changeable per organisation).
     llm_default_monthly_token_budget: int = Field(default=2_000_000, ge=0)
 
+    # --- Deployers (Phase 4). All optional; the defaults are the real vendor endpoints. ---
+    # The API base URLs can be pointed at a local stand-in for tests and the dev smoke run.
+    # The address the Cloudflare Worker uses to fetch its (signed) rules: it must be reachable from the internet.
+    public_api_url: str = "http://localhost:8000"
+    github_api_base: str = "https://api.github.com"
+    # Development and tests only: let the deploy tooling fetch pages on private / loopback addresses
+    # (the ownership file check, the live-HTML read before a deploy, the post-deploy verification).
+    deploy_allow_private_hosts: bool = False
+
     @field_validator(
         "google_client_id",
         "google_client_secret",
@@ -112,6 +121,8 @@ class Settings(BaseSettings):
                 raise ValueError("COOKIE_SECURE=false is not allowed in production")
             if self.llm_provider == "fake":
                 raise ValueError("LLM_PROVIDER=fake is for development and tests only")
+            if self.deploy_allow_private_hosts:
+                raise ValueError("DEPLOY_ALLOW_PRIVATE_HOSTS is for development and tests only")
         return self
 
     @property

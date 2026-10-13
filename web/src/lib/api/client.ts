@@ -5,11 +5,26 @@ import type {
   AiReportImport,
   AiReportSource,
   AiSettings,
+  AutopilotSettings,
+  AppNotification,
   Audit,
   AuditChanges,
   AuditIssues,
   AuditPages,
+  CloudflareSetup,
   Connection,
+  DeployBatch,
+  DeployConnection,
+  DeployConnections,
+  DeployMethod,
+  DeployResult,
+  DeployTest,
+  Deployment,
+  DeploymentStatus,
+  GithubPathRule,
+  Notifications,
+  Ownership,
+  RollbackResult,
   CtrCurve,
   BulkOp,
   BulkResult,
@@ -439,6 +454,112 @@ export class ApiClient {
 
   setAiBudget(monthlyTokenBudget: number | null): Promise<AiSettings> {
     return this.request<AiSettings>("/ai/budget", { method: "PUT", body: { monthly_token_budget: monthlyTokenBudget } });
+  }
+
+  // ---- deploying (Phase 4) -----------------------------------------------------------------------
+  deployOwnership(siteId: string): Promise<Ownership> {
+    return this.request(`/sites/${siteId}/deploy/ownership`);
+  }
+
+  checkDeployOwnership(siteId: string, method: "dns" | "file" | "auto" = "auto"): Promise<Ownership> {
+    return this.request(`/sites/${siteId}/deploy/ownership/check`, { method: "POST", body: { method } });
+  }
+
+  deployConnections(siteId: string): Promise<DeployConnections> {
+    return this.request(`/sites/${siteId}/deploy/connections`);
+  }
+
+  chooseDeployMethod(siteId: string, method: DeployMethod | null): Promise<DeployConnections> {
+    return this.request(`/sites/${siteId}/deploy/method`, { method: "PUT", body: { method } });
+  }
+
+  connectCloudflare(siteId: string, rotate = false): Promise<CloudflareSetup> {
+    return this.request(`/sites/${siteId}/deploy/connections/cloudflare${rotate ? "?rotate=true" : ""}`, { method: "PUT" });
+  }
+
+  cloudflareSetup(siteId: string): Promise<CloudflareSetup> {
+    return this.request(`/sites/${siteId}/deploy/connections/cloudflare/setup`);
+  }
+
+  cloudflareKillSwitch(siteId: string, off: boolean): Promise<DeployConnection> {
+    return this.request(`/sites/${siteId}/deploy/connections/cloudflare/kill-switch`, { method: "POST", body: { off } });
+  }
+
+  connectWordpress(
+    siteId: string,
+    body: { site_url: string; username: string; application_password: string },
+  ): Promise<DeployTest> {
+    return this.request(`/sites/${siteId}/deploy/connections/wordpress`, { method: "PUT", body });
+  }
+
+  connectGithub(
+    siteId: string,
+    body: { repo: string; token: string; base_branch?: string; root?: string; path_rules?: GithubPathRule[] },
+  ): Promise<DeployTest> {
+    return this.request(`/sites/${siteId}/deploy/connections/github`, { method: "PUT", body });
+  }
+
+  githubSettings(
+    siteId: string,
+    body: { base_branch?: string; root?: string; path_rules?: GithubPathRule[] },
+  ): Promise<DeployConnection> {
+    return this.request(`/sites/${siteId}/deploy/connections/github/settings`, { method: "PUT", body });
+  }
+
+  testDeployConnection(siteId: string, method: DeployMethod): Promise<DeployTest> {
+    return this.request(`/sites/${siteId}/deploy/connections/${method}/test`, { method: "POST" });
+  }
+
+  disconnectDeployer(siteId: string, method: DeployMethod): Promise<void> {
+    return this.request(`/sites/${siteId}/deploy/connections/${method}`, { method: "DELETE" });
+  }
+
+  deploy(siteId: string, body: { action_ids?: string[]; all_approved?: boolean }): Promise<DeployResult> {
+    return this.request(`/sites/${siteId}/deploy`, { method: "POST", body });
+  }
+
+  deployments(siteId: string, filters: { status?: DeploymentStatus[]; batch_id?: string } = {}): Promise<Deployment[]> {
+    const params = new URLSearchParams();
+    for (const s of filters.status ?? []) params.append("status", s);
+    if (filters.batch_id) params.set("batch_id", filters.batch_id);
+    const query = params.toString();
+    return this.request(`/sites/${siteId}/deploy/deployments${query ? `?${query}` : ""}`);
+  }
+
+  deployBatches(siteId: string): Promise<DeployBatch[]> {
+    return this.request(`/sites/${siteId}/deploy/batches`);
+  }
+
+  deployBatch(siteId: string, batchId: string): Promise<DeployResult> {
+    return this.request(`/sites/${siteId}/deploy/batches/${batchId}`);
+  }
+
+  rollbackDeployments(siteId: string, deploymentIds: string[]): Promise<RollbackResult> {
+    return this.request(`/sites/${siteId}/deploy/rollback`, { method: "POST", body: { deployment_ids: deploymentIds } });
+  }
+
+  rollbackBatch(siteId: string, batchId: string): Promise<RollbackResult> {
+    return this.request(`/sites/${siteId}/deploy/batches/${batchId}/rollback`, { method: "POST" });
+  }
+
+  autopilotSettings(siteId: string): Promise<AutopilotSettings> {
+    return this.request(`/sites/${siteId}/deploy/autopilot`);
+  }
+
+  saveAutopilot(siteId: string, body: { enabled?: boolean; weekly_cap?: number }): Promise<AutopilotSettings> {
+    return this.request(`/sites/${siteId}/deploy/autopilot`, { method: "PUT", body });
+  }
+
+  notifications(): Promise<Notifications> {
+    return this.request("/notifications");
+  }
+
+  readNotification(id: string): Promise<AppNotification> {
+    return this.request(`/notifications/${id}/read`, { method: "POST" });
+  }
+
+  readAllNotifications(): Promise<Notifications> {
+    return this.request("/notifications/read-all", { method: "POST" });
   }
 
   createOrg(name: string): Promise<Org> {

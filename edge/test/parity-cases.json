@@ -1,0 +1,58 @@
+[
+  {
+    "name": "title meta canonical",
+    "url": "https://shop.example/page",
+    "html": "<html><head><title>Old</title><meta name=\"description\" content=\"old\"><link rel=\"canonical\" href=\"https://shop.example/old\"></head><body><p>x</p></body></html>",
+    "ops": [
+      {"op": "title", "value": "Brand new title"},
+      {"op": "meta_description", "value": "A brand new description"},
+      {"op": "canonical", "value": "https://shop.example/page"}
+    ],
+    "contains": ["<title>Brand new title</title>", "content=\"A brand new description\"", "href=\"https://shop.example/page\""],
+    "absent": ["<title>Old</title>", "content=\"old\"", "/old\""]
+  },
+  {
+    "name": "missing tags are added to the head",
+    "url": "https://shop.example/page",
+    "html": "<html><head></head><body><p>x</p></body></html>",
+    "ops": [
+      {"op": "title", "value": "Added title"},
+      {"op": "meta_description", "value": "Added description"},
+      {"op": "canonical", "value": "https://shop.example/page"}
+    ],
+    "contains": ["<title>Added title</title>", "<meta name=\"description\" content=\"Added description\">", "<link rel=\"canonical\" href=\"https://shop.example/page\">"],
+    "absent": []
+  },
+  {
+    "name": "alt by src",
+    "url": "https://shop.example/page",
+    "html": "<html><head></head><body><img src=\"/a.png\"><img src=\"/b.png\" alt=\"keep\"></body></html>",
+    "ops": [{"op": "alt", "src": "https://shop.example/a.png", "value": "A grinder"}],
+    "contains": ["alt=\"A grinder\"", "alt=\"keep\""],
+    "absent": []
+  },
+  {
+    "name": "json-ld appended and replaced",
+    "url": "https://shop.example/page",
+    "html": "<html><head><script type=\"application/ld+json\">{\"@type\":\"Organization\",\"name\":\"Old\"}</script><script type=\"application/ld+json\">{\"@type\":\"BreadcrumbList\"}</script></head><body></body></html>",
+    "ops": [{"op": "jsonld", "id": "searchos-abc", "value": {"@context": "https://schema.org", "@type": "Organization", "name": "Shop"}, "replace": {"types": ["Organization"]}}],
+    "contains": ["id=\"searchos-abc\"", "\"name\":\"Shop\"", "BreadcrumbList"],
+    "absent": ["\"name\":\"Old\""]
+  },
+  {
+    "name": "internal link in a paragraph only",
+    "url": "https://shop.example/page",
+    "html": "<html><body><h2>Espresso machines</h2><p>Read about espresso machines today.</p></body></html>",
+    "ops": [{"op": "link", "id": "p1", "anchor": "espresso machines", "to": "https://shop.example/espresso"}],
+    "contains": ["about <a href=\"https://shop.example/espresso\" data-searchos=\"p1\">espresso machines</a> today"],
+    "absent": ["<h2><a"]
+  },
+  {
+    "name": "link anchor not found changes nothing",
+    "url": "https://shop.example/page",
+    "html": "<html><body><p>Nothing relevant here.</p></body></html>",
+    "ops": [{"op": "link", "id": "p2", "anchor": "tea kettles", "to": "https://shop.example/t"}],
+    "contains": ["<p>Nothing relevant here.</p>"],
+    "absent": ["data-searchos"]
+  }
+]

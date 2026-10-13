@@ -14,6 +14,8 @@ USER_TRANSITIONS: dict[ActionStatus, frozenset[ActionStatus]] = {
     S.approved: frozenset({S.proposed, S.rejected}),
     S.rejected: frozenset({S.proposed}),
     S.manual_done: frozenset({S.proposed}),
+    # the deployer could not place it: do it by hand, retry after fixing the setup, or drop it
+    S.needs_manual: frozenset({S.manual_done, S.approved, S.rejected}),
 }
 
 
@@ -31,7 +33,7 @@ def transition_error(
             return (
                 "There is no proposed value yet. Edit the action to write one, or add an AI key and re-plan."
             )
-    if target is S.manual_done and info.risk_class is not RiskClass.manual:
+    if target is S.manual_done and info.risk_class is not RiskClass.manual and current is not S.needs_manual:
         return "Only manual tasks can be marked done; other actions are approved and then deployed."
     return None
 

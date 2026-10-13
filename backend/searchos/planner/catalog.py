@@ -28,6 +28,10 @@ class ActionStatus(enum.StrEnum):
     rejected = "rejected"
     rolled_back = "rolled_back"  # Phase 4
     manual_done = "manual_done"
+    needs_manual = (
+        "needs_manual"  # Phase 4: the deployer could not place the change safely; a developer does it
+    )
+    stale = "stale"  # Phase 4: the live page changed since the audit, so the action was not deployed
     obsolete = "obsolete"  # the issue is gone from the latest audit / opportunities
 
 
@@ -38,6 +42,7 @@ OPEN_STATUSES: tuple[ActionStatus, ...] = (
     ActionStatus.no_suggestion,
     ActionStatus.approved,
     ActionStatus.deployed,
+    ActionStatus.needs_manual,
 )
 # Statuses the planner may close on its own when the underlying finding disappears.
 AUTO_CLOSABLE: tuple[ActionStatus, ...] = (
@@ -45,6 +50,7 @@ AUTO_CLOSABLE: tuple[ActionStatus, ...] = (
     ActionStatus.needs_ai,
     ActionStatus.no_suggestion,
     ActionStatus.approved,
+    ActionStatus.needs_manual,
 )
 
 ValueKind = Literal["ai", "deterministic", "brief", "checklist"]

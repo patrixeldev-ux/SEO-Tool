@@ -1,0 +1,61 @@
+{
+ "normalise": [
+  {
+   "input": "/",
+   "path": "/"
+  },
+  {
+   "input": "",
+   "path": "/"
+  },
+  {
+   "input": "/a/b/",
+   "path": "/a/b"
+  },
+  {
+   "input": "/a//b",
+   "path": "/a//b"
+  },
+  {
+   "input": "/Café/ünï",
+   "path": "/Caf%C3%A9/%C3%BCn%C3%AF"
+  },
+  {
+   "input": "/a b/c%20d",
+   "path": "/a%20b/c%20d"
+  },
+  {
+   "input": "/x?y=1#z",
+   "path": "/x"
+  },
+  {
+   "input": "/it's(ok)!*",
+   "path": "/it%27s%28ok%29%21%2A"
+  },
+  {
+   "input": "/%E4%BD%A0%E5%A5%BD/",
+   "path": "/%E4%BD%A0%E5%A5%BD"
+  },
+  {
+   "input": "/a/./b",
+   "path": "/a/./b"
+  },
+  {
+   "input": "/UP/Case",
+   "path": "/UP/Case"
+  },
+  {
+   "input": "/a%2Fb",
+   "path": "/a%2Fb"
+  },
+  {
+   "input": "/tilde~dash-under_dot.",
+   "path": "/tilde~dash-under_dot."
+  }
+ ],
+ "signature": {
+  "secret": "s3cret-for-vectors",
+  "body": "{\"enabled\":true,\"host\":\"shop.example\",\"issued_at\":1760000000,\"pages\":{\"/page\":[{\"op\":\"title\",\"value\":\"Café ☕ <b>\"}]},\"v\":1760000000}",
+  "sig": "08f0fdd6d133624582af70d9b63dfe52a2d5fffeb8f95320fbc3544ec055c9f2"
+ }
+}

@@ -18,6 +18,10 @@ class Provider(enum.StrEnum):
     google = "google"
     bing = "bing"
     psi = "psi"
+    # Phase 4 deployers
+    cloudflare = "cloudflare"
+    wordpress = "wordpress"
+    github = "github"
 
 
 class ConnectionStatus(enum.StrEnum):

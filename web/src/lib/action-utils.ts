@@ -9,11 +9,13 @@ export const STATUS_LABELS: Record<ActionStatus, string> = {
   rejected: "Rejected",
   rolled_back: "Rolled back",
   manual_done: "Done",
+  stale: "Out of date",
+  needs_manual: "Needs a developer",
   obsolete: "Obsolete",
 };
 
 export const RISK_LABELS: Record<RiskClass, { label: string; hint: string }> = {
-  auto: { label: "Low risk", hint: "Text or markup. May be applied automatically once autopilot exists (Phase 4)." },
+  auto: { label: "Low risk", hint: "Text or markup. Autopilot may apply it by itself when you switch autopilot on." },
   approve: { label: "Needs approval", hint: "Always waits for a person before anything changes." },
   manual: { label: "Manual task", hint: "Work only a person can do. Never automated." },
 };

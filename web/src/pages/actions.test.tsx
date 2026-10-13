@@ -292,12 +292,12 @@ describe("Actions page", () => {
     expect(await within(await screen.findByTestId("manual-task")).findByText("Done")).toBeInTheDocument();
   });
 
-  it("saves the autopilot choice for admins and says deploying arrives in Phase 4", async () => {
+  it("saves the autopilot choice for admins and explains the safety checks", async () => {
     const api = withPlan();
     renderApp(api.client, "/actions/s1");
     const user = userEvent.setup();
     const toggle = await screen.findByRole("switch", { name: "Autopilot" });
-    expect(screen.getByText("Deploying arrives in Phase 4")).toBeInTheDocument();
+    expect(screen.getByText(/undone automatically if it does\s+not show up/)).toBeInTheDocument();
     expect(toggle).toHaveAttribute("aria-checked", "false");
     await user.click(toggle);
     await waitFor(() => expect(api.sitesByOrg.get("o1")![0]!.autopilot_enabled).toBe(true));

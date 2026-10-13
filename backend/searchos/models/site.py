@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -30,3 +31,12 @@ class Site(IdMixin, CreatedAtMixin, Base):
     autopilot_enabled: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, default=False, server_default=sa.false()
     )
+
+    # --- Phase 4: proof that the person who added the site controls it (required before any deploy) ---
+    verify_token: Mapped[str | None] = mapped_column(sa.String(64))
+    verified_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    verify_method: Mapped[str | None] = mapped_column(sa.String(8))  # dns | file
+    verify_checked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    verify_error: Mapped[str | None] = mapped_column(sa.Text)
+    # cloudflare | wordpress | github: which connected deployer receives changes (None = the only connected one)
+    deploy_method: Mapped[str | None] = mapped_column(sa.String(12))
