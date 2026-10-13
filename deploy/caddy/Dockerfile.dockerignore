@@ -1,0 +1,12 @@
+**/node_modules
+**/.pnpm-store
+web/dist
+.git
+backend
+desktop
+edge
+wp-plugin
+fixtures
+docs
+.env
+.env.*
