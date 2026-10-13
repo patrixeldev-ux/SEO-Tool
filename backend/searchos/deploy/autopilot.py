@@ -20,7 +20,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from searchos.deploy import service
+from searchos.deploy import schedule, service
 from searchos.deploy.base import Deployer
 from searchos.deploy.livefetch import PageFetcher
 from searchos.deploy.ops import DEPLOYABLE_TYPES, may_auto_deploy
@@ -29,6 +29,7 @@ from searchos.models import (
     Action,
     BatchTrigger,
     Deployment,
+    DeploymentStatus,
     Notification,
     Site,
 )
@@ -196,6 +197,9 @@ async def run_autopilot_for_site(
         await _notify(session, site, batch.id, picked, attempted)
     result.reason = "deployed" if result.deployed else "nothing could be deployed"
     await session.commit()
+    schedule.enqueue_verifications(
+        [d.id for d in batch_result.deployments if d.status is DeploymentStatus.applied]
+    )
     return result
 
 

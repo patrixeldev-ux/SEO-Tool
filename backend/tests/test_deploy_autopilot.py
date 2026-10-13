@@ -33,8 +33,10 @@ def url(i: int) -> str:
 
 
 @pytest.fixture(autouse=True)
-def quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(schedule, "enqueue_verifications", lambda ids, countdown=0: None)
+def quiet(monkeypatch: pytest.MonkeyPatch) -> list[uuid.UUID]:
+    queued: list[uuid.UUID] = []
+    monkeypatch.setattr(schedule, "enqueue_verifications", lambda ids, countdown=0: queued.extend(ids))
+    return queued
 
 
 async def setup(
@@ -80,6 +82,16 @@ async def test_deploys_best_auto_actions_first_and_stops_at_the_weekly_cap(
     await make_action(session, site, url=url(4), status=ActionStatus.proposed)
     later = await run(session, site, web, NOW + timedelta(days=8))
     assert later.deployed == 2  # the week has passed: the cap allows 2 more
+
+
+async def test_autopilot_queues_verification_of_what_it_deployed(
+    client: AsyncClient, session: AsyncSession, fake_registry: Any, quiet: list[uuid.UUID]
+) -> None:
+    site, web, _, _ = await setup(client, session, fake_registry)
+    await make_action(session, site, url=url(0), status=ActionStatus.proposed)
+    assert (await run(session, site, web)).deployed == 1
+    deps = (await session.scalars(sa.select(Deployment.id))).all()
+    assert quiet == list(deps) and len(deps) == 1
 
 
 async def test_default_cap_is_twenty() -> None:
