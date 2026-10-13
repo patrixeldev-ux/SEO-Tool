@@ -37,6 +37,7 @@ async def run_verify(deployment_id: uuid.UUID) -> VerifyOutcome:
 async def sweep_unverified() -> dict[str, Any]:
     """Queue verification for deployments that are `applied` but have no check running (a lost task, a restart)
     and look at open pull requests."""
+    from searchos.deploy.github import poll_pull_requests
     from searchos.deploy.schedule import enqueue_verifications
     from searchos.models import Deployment, DeploymentStatus
 
@@ -50,7 +51,7 @@ async def sweep_unverified() -> dict[str, Any]:
                     )
                 )
             ).all()
-        merged: list[uuid.UUID] = []
+        merged = await poll_pull_requests(sessions)
         enqueue_verifications(list(ids) + merged)
         return {"requeued": len(ids), "merged": len(merged)}
 

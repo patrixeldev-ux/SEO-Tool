@@ -22,6 +22,9 @@ from searchos.deploy import connections as conns
 from searchos.deploy import ownership, rollback, schedule, service
 from searchos.deploy.base import DeployerError
 from searchos.deploy.cloudflare import EDGE_HEADER  # noqa: F401
+from searchos.deploy.github import REPO_RE
+from searchos.deploy.github import clean_path_rules as github_clean_rules
+from searchos.deploy.github import clean_root as github_clean_root
 from searchos.deploy.ops import DEPLOYABLE_TYPES
 from searchos.deploy.signing import new_signing_secret, new_site_token
 from searchos.deploy.wordpress import check_site_url
@@ -403,6 +406,76 @@ async def connect_wordpress(site_id: uuid.UUID, body: WordPressIn, ctx: AdminCtx
         site.deploy_method = DeployMethod.wordpress.value
     await ctx.session.commit()
     return TestOut(ok=result.ok, message=result.message, connection=connection_out(conn, site))
+
+
+class PathRuleIn(BaseModel):
+    url: str = Field(max_length=200, description="Page address pattern, e.g. /blog/*")
+    file: str = Field(max_length=300, description="File in the repository, e.g. blog/{1}.html")
+
+
+class GithubIn(BaseModel):
+    repo: str = Field(min_length=3, max_length=201, description="owner/name")
+    token: str = Field(min_length=20, max_length=300)
+    base_branch: str | None = Field(default=None, max_length=100)
+    root: str = Field(default="", max_length=200, description="Folder with the built HTML files, e.g. public")
+    path_rules: list[PathRuleIn] = Field(default_factory=list, max_length=50)
+
+
+class GithubSettingsIn(BaseModel):
+    base_branch: str | None = Field(default=None, max_length=100)
+    root: str = Field(default="", max_length=200)
+    path_rules: list[PathRuleIn] = Field(default_factory=list, max_length=50)
+
+
+def _github_meta(repo: str, body: GithubSettingsIn | GithubIn) -> dict[str, Any]:
+    try:
+        return {
+            "repo": repo,
+            "base_branch": (body.base_branch or "").strip() or None,
+            "root": github_clean_root(body.root),
+            "path_rules": github_clean_rules([r.model_dump() for r in body.path_rules]),
+        }
+    except DeployerError as exc:
+        raise HTTPException(422, str(exc)) from None
+
+
+@router.put("/connections/github", response_model=TestOut)
+async def connect_github(site_id: uuid.UUID, body: GithubIn, ctx: AdminCtx) -> TestOut:
+    """Store the repository and a fine-grained token (encrypted) and test them right away."""
+    site = await site_or_404(ctx, site_id)
+    repo = body.repo.strip().removeprefix("https://github.com/").strip("/")
+    if not REPO_RE.match(repo):
+        raise HTTPException(422, "Enter the repository as owner/name, for example acme/website.")
+    conn = await conns.save_connection(
+        ctx.session,
+        site,
+        DeployMethod.github,
+        user_id=ctx.user.id,
+        credentials={"token": body.token.strip()},
+        meta=_github_meta(repo, body),
+        label=f"GitHub ({repo})",
+    )
+    result = await conns.run_test(ctx.session, site, conn)
+    if (
+        result.ok
+        and site.deploy_method is None
+        and len(await conns.list_connections(ctx.session, site.id)) == 1
+    ):
+        site.deploy_method = DeployMethod.github.value
+    await ctx.session.commit()
+    return TestOut(ok=result.ok, message=result.message, connection=connection_out(conn, site))
+
+
+@router.put("/connections/github/settings", response_model=ConnectionOut)
+async def github_settings(site_id: uuid.UUID, body: GithubSettingsIn, ctx: AdminCtx) -> ConnectionOut:
+    """Change where pages live in the repository without entering the token again."""
+    site = await site_or_404(ctx, site_id)
+    conn = await conns.get_connection(ctx.session, site.id, DeployMethod.github)
+    if conn is None:
+        raise HTTPException(404, "GitHub is not set up for this site yet.")
+    conn.meta = {**conn.meta, **_github_meta(str(conn.meta.get("repo", "")), body)}
+    await ctx.session.commit()
+    return connection_out(conn, site)
 
 
 @router.put("/connections/cloudflare", response_model=CloudflareSetupOut)

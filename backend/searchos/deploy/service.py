@@ -219,6 +219,7 @@ async def make_context(
         live={u: ds for u, ds in live.items() if ds},
         batch_id=batch_id,
         version=int((now or datetime.now(UTC)).timestamp()),
+        session=session,
     )
 
 
@@ -364,16 +365,37 @@ async def deploy_actions(
         else:
             dep.status = DeploymentStatus.failed
             dep.error = out.error
-            action.status = ActionStatus.approved
-            log_event(
-                session,
-                site,
-                "apply_failed",
-                batch_id=batch.id,
-                deployment_id=dep.id,
-                actor_id=user_id,
-                error=out.error,
-            )
+            if out.meta.get("needs_manual"):
+                # the deployer could not place the change safely: a developer does it from the hand-off text
+                action.status = ActionStatus.needs_manual
+                action.generation = {
+                    **action.generation,
+                    "deploy_manual": {
+                        "reason": out.meta.get("reason") or out.error,
+                        "handoff": out.meta.get("handoff") or "",
+                        "at": now.isoformat(),
+                    },
+                }
+                log_event(
+                    session,
+                    site,
+                    "needs_manual",
+                    batch_id=batch.id,
+                    deployment_id=dep.id,
+                    actor_id=user_id,
+                    reason=out.error,
+                )
+            else:
+                action.status = ActionStatus.approved
+                log_event(
+                    session,
+                    site,
+                    "apply_failed",
+                    batch_id=batch.id,
+                    deployment_id=dep.id,
+                    actor_id=user_id,
+                    error=out.error,
+                )
     await refresh_batch(session, batch, now)
     await session.commit()
     result.deployments = chosen

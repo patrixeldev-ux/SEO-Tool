@@ -25,7 +25,8 @@ class DeployContext:
     # Deployments of this site that are live right now, per page URL (the Worker rebuilds a page's whole rule set).
     live: dict[str, list[Deployment]] = field(default_factory=dict)
     batch_id: uuid.UUID | None = None
-    version: int = 0  # rule version / commit marker for this run
+    version: int = 0
+    session: Any = None  # AsyncSession, for deployers that need to read actions (GitHub hand-off text)  # rule version / commit marker for this run
 
     @property
     def meta(self) -> dict[str, Any]:
