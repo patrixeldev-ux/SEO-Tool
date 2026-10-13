@@ -28,6 +28,7 @@ class ActionStatus(enum.StrEnum):
     rejected = "rejected"
     rolled_back = "rolled_back"  # Phase 4
     manual_done = "manual_done"
+    stale = "stale"  # Phase 4: the live page changed since the audit, so the action was not deployed
     obsolete = "obsolete"  # the issue is gone from the latest audit / opportunities
 
 

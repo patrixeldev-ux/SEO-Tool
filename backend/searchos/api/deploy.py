@@ -8,14 +8,35 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+import sqlalchemy as sa
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from searchos.core.config import get_settings
+from searchos.core.crypto import decrypt_json
 from searchos.core.deps import OrgContext, require_role
-from searchos.deploy import ownership
-from searchos.models import Role, Site
+from searchos.deploy import connections as conns
+from searchos.deploy import ownership, rollback, schedule, service
+from searchos.deploy.cloudflare import EDGE_HEADER  # noqa: F401
+from searchos.deploy.ops import DEPLOYABLE_TYPES
+from searchos.deploy.signing import new_signing_secret, new_site_token
+from searchos.models import (
+    Action,
+    BatchStatus,
+    BatchTrigger,
+    ConnectionStatus,
+    DeployBatch,
+    Deployment,
+    DeploymentStatus,
+    DeployMethod,
+    IntegrationConnection,
+    Role,
+    Site,
+)
+from searchos.planner.catalog import ActionStatus
 
 router = APIRouter(prefix="/sites/{site_id}/deploy", tags=["deploy"])
 
@@ -85,13 +106,406 @@ async def check_ownership_now(
     return out
 
 
-async def verified_site_or_409(ctx: OrgContext, site_id: uuid.UUID) -> Site:
-    """The gate for every endpoint that changes a site: 409 with a plain sentence when not verified."""
+# ---- deployments ---------------------------------------------------------------------------------------------
+class DeploymentOut(BaseModel):
+    id: uuid.UUID
+    action_id: uuid.UUID
+    batch_id: uuid.UUID
+    method: DeployMethod
+    url: str
+    action_type: str
+    field: str
+    status: DeploymentStatus
+    error: str | None
+    ops: list[dict[str, Any]]
+    before_snapshot: dict[str, Any] | None
+    after_snapshot: dict[str, Any] | None
+    pr_url: str | None
+    can_rollback: bool
+    verify_attempts: int
+    created_at: datetime
+    deployed_at: datetime | None
+    verified_at: datetime | None
+    reverted_at: datetime | None
+
+
+class BatchOut(BaseModel):
+    id: uuid.UUID
+    method: DeployMethod
+    trigger: BatchTrigger
+    status: BatchStatus
+    created_by: uuid.UUID | None
+    created_at: datetime
+    finished_at: datetime | None
+    summary: dict[str, Any]
+    counts: dict[str, int]
+
+
+class SkippedOut(BaseModel):
+    action_id: uuid.UUID
+    reason: str
+
+
+class DeployResultOut(BaseModel):
+    batch: BatchOut | None
+    deployments: list[DeploymentOut]
+    skipped: list[SkippedOut]
+
+
+class DeployIn(BaseModel):
+    action_ids: list[uuid.UUID] = Field(default_factory=list, max_length=service.MAX_BATCH)
+    # True = every approved, deployable action of the site (highest priority first, at most MAX_BATCH)
+    all_approved: bool = False
+
+
+def deployment_out(dep: Deployment) -> DeploymentOut:
+    return DeploymentOut(
+        id=dep.id,
+        action_id=dep.action_id,
+        batch_id=dep.batch_id,
+        method=dep.method,
+        url=dep.url,
+        action_type=dep.action_type,
+        field=dep.field,
+        status=dep.status,
+        error=dep.error,
+        ops=list(dep.payload.get("ops", [])),
+        before_snapshot=dep.before_snapshot,
+        after_snapshot=dep.after_snapshot,
+        pr_url=dep.meta.get("pr_url"),
+        can_rollback=rollback.can_rollback(dep),
+        verify_attempts=dep.verify_attempts,
+        created_at=dep.created_at,
+        deployed_at=dep.deployed_at,
+        verified_at=dep.verified_at,
+        reverted_at=dep.reverted_at,
+    )
+
+
+async def batch_out(session: AsyncSession, batch: DeployBatch) -> BatchOut:
+    rows = (
+        await session.execute(
+            sa.select(Deployment.status, sa.func.count())
+            .where(Deployment.batch_id == batch.id)
+            .group_by(Deployment.status)
+        )
+    ).all()
+    return BatchOut(
+        id=batch.id,
+        method=batch.method,
+        trigger=batch.trigger,
+        status=batch.status,
+        created_by=batch.created_by,
+        created_at=batch.created_at,
+        finished_at=batch.finished_at,
+        summary=batch.summary,
+        counts={status.value: n for status, n in rows},
+    )
+
+
+def raise_for(exc: service.DeployError) -> NoReturn:
+    raise HTTPException(exc.status_code, str(exc)) from None
+
+
+@router.post("", response_model=DeployResultOut, status_code=201)
+async def deploy_selected(site_id: uuid.UUID, body: DeployIn, ctx: AdminCtx) -> DeployResultOut:
+    """Deploy the chosen approved actions now. Nothing happens unless the site's ownership is verified."""
     site = await site_or_404(ctx, site_id)
+    ids = list(body.action_ids)
+    if body.all_approved:
+        ids += list(
+            (
+                await ctx.session.scalars(
+                    sa.select(Action.id)
+                    .where(
+                        Action.site_id == site.id,
+                        Action.status == ActionStatus.approved,
+                        Action.type.in_(sorted(DEPLOYABLE_TYPES)),
+                    )
+                    .order_by(Action.priority.desc(), Action.id)
+                    .limit(service.MAX_BATCH)
+                )
+            ).all()
+        )
+        ids = list(dict.fromkeys(ids))[: service.MAX_BATCH]
     try:
-        await ownership.require_verified(site, ownership.default_checkers())
-    except ownership.NotVerifiedError as exc:
-        await ctx.session.commit()  # keep the re-check outcome
-        raise HTTPException(409, str(exc)) from None
+        result = await service.deploy_actions(ctx.session, site, ids, user_id=ctx.user.id)
+    except service.DeployError as exc:
+        raise_for(exc)
+    schedule.enqueue_verifications([d.id for d in result.deployments if d.status is DeploymentStatus.applied])
+    return DeployResultOut(
+        batch=await batch_out(ctx.session, result.batch) if result.batch else None,
+        deployments=[deployment_out(d) for d in result.deployments],
+        skipped=[SkippedOut(action_id=s.action_id, reason=s.reason) for s in result.skipped],
+    )
+
+
+@router.get("/deployments", response_model=list[DeploymentOut])
+async def list_deployments(
+    site_id: uuid.UUID,
+    ctx: ReadCtx,
+    action_id: uuid.UUID | None = None,
+    batch_id: uuid.UUID | None = None,
+    status: Annotated[list[DeploymentStatus] | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[DeploymentOut]:
+    await site_or_404(ctx, site_id)
+    query = ctx.select(Deployment).where(Deployment.site_id == site_id)
+    if action_id:
+        query = query.where(Deployment.action_id == action_id)
+    if batch_id:
+        query = query.where(Deployment.batch_id == batch_id)
+    if status:
+        query = query.where(Deployment.status.in_(status))
+    query = query.order_by(Deployment.created_at.desc(), Deployment.id).limit(limit).offset(offset)
+    return [deployment_out(d) for d in (await ctx.session.scalars(query)).all()]
+
+
+@router.get("/batches", response_model=list[BatchOut])
+async def list_batches(
+    site_id: uuid.UUID,
+    ctx: ReadCtx,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[BatchOut]:
+    await site_or_404(ctx, site_id)
+    query = (
+        ctx.select(DeployBatch)
+        .where(DeployBatch.site_id == site_id)
+        .order_by(DeployBatch.created_at.desc(), DeployBatch.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return [await batch_out(ctx.session, b) for b in (await ctx.session.scalars(query)).all()]
+
+
+# ---- connections -----------------------------------------------------------------------------------------------
+class ConnectionOut(BaseModel):
+    method: DeployMethod
+    status: ConnectionStatus
+    label: str | None
+    last_error: str | None
+    last_tested_at: datetime | None
+    meta: dict[str, Any]
+    chosen: bool
+
+
+class ConnectionsOut(BaseModel):
+    deploy_method: DeployMethod | None
+    connections: list[ConnectionOut]
+    verified: bool
+
+
+class TestOut(BaseModel):
+    ok: bool
+    message: str
+    connection: ConnectionOut
+
+
+def connection_out(conn: IntegrationConnection, site: Site) -> ConnectionOut:
+    return ConnectionOut(
+        method=DeployMethod(conn.provider.value),
+        status=conn.status,
+        label=conn.account_label,
+        last_error=conn.last_error,
+        last_tested_at=conn.last_sync_at,
+        meta=conn.meta,
+        chosen=site.deploy_method == conn.provider.value,
+    )
+
+
+@router.get("/connections", response_model=ConnectionsOut)
+async def get_connections(site_id: uuid.UUID, ctx: ReadCtx) -> ConnectionsOut:
+    site = await site_or_404(ctx, site_id)
+    rows = await conns.list_connections(ctx.session, site.id)
+    return ConnectionsOut(
+        deploy_method=DeployMethod(site.deploy_method) if site.deploy_method else None,
+        connections=[connection_out(c, site) for c in rows],
+        verified=ownership.is_verified(site),
+    )
+
+
+class MethodIn(BaseModel):
+    method: DeployMethod | None
+
+
+@router.put("/method", response_model=ConnectionsOut)
+async def choose_method(site_id: uuid.UUID, body: MethodIn, ctx: AdminCtx) -> ConnectionsOut:
+    """Which connected deployer receives the changes. `null` = "none" (changes stay as hand-offs)."""
+    site = await site_or_404(ctx, site_id)
+    if body.method is not None:
+        conn = await conns.get_connection(ctx.session, site.id, body.method)
+        if conn is None or conn.status is not ConnectionStatus.connected:
+            raise HTTPException(409, "Connect and test that deployer first.")
+    site.deploy_method = body.method.value if body.method else None
     await ctx.session.commit()
-    return site
+    return await get_connections(site_id, ctx)
+
+
+class CloudflareSetupOut(BaseModel):
+    site_token: str
+    signing_secret: str
+    rules_url: str
+    host: str
+    route: str
+    connection: ConnectionOut
+
+
+def _cloudflare_setup(site: Site, conn: IntegrationConnection) -> CloudflareSetupOut:
+    secret = str(decrypt_json(conn.credentials_encrypted or "")["signing_secret"])
+    token = str(conn.meta["site_token"])
+    return CloudflareSetupOut(
+        site_token=token,
+        signing_secret=secret,
+        rules_url=f"{get_settings().public_api_url.rstrip('/')}/edge/rules/{token}",
+        host=site.domain,
+        route=f"{site.domain}/*",
+        connection=connection_out(conn, site),
+    )
+
+
+@router.put("/connections/cloudflare", response_model=CloudflareSetupOut)
+async def connect_cloudflare(site_id: uuid.UUID, ctx: AdminCtx, rotate: bool = False) -> CloudflareSetupOut:
+    """Create the Cloudflare connection (a site token and a signing secret for the Worker). Calling it again
+    keeps the values unless `rotate=true` (then the Worker must be given the new ones)."""
+    site = await site_or_404(ctx, site_id)
+    conn = await conns.get_connection(ctx.session, site.id, DeployMethod.cloudflare)
+    if conn is None or rotate or not conn.credentials_encrypted:
+        old = dict(conn.meta) if conn else {}
+        conn = await conns.save_connection(
+            ctx.session,
+            site,
+            DeployMethod.cloudflare,
+            user_id=ctx.user.id,
+            credentials={"signing_secret": new_signing_secret()},
+            meta={"site_token": new_site_token(), "kill_switch": bool(old.get("kill_switch"))},
+            label="Cloudflare Worker",
+        )
+    await ctx.session.commit()
+    return _cloudflare_setup(site, conn)
+
+
+@router.get("/connections/cloudflare/setup", response_model=CloudflareSetupOut)
+async def cloudflare_setup(site_id: uuid.UUID, ctx: AdminCtx) -> CloudflareSetupOut:
+    site = await site_or_404(ctx, site_id)
+    conn = await conns.get_connection(ctx.session, site.id, DeployMethod.cloudflare)
+    if conn is None:
+        raise HTTPException(404, "Cloudflare is not set up for this site yet.")
+    return _cloudflare_setup(site, conn)
+
+
+class KillSwitchIn(BaseModel):
+    off: bool
+
+
+@router.post("/connections/cloudflare/kill-switch", response_model=ConnectionOut)
+async def cloudflare_kill_switch(site_id: uuid.UUID, body: KillSwitchIn, ctx: AdminCtx) -> ConnectionOut:
+    """Stop the Worker applying anything (within about 5 minutes); every page passes through unchanged."""
+    site = await site_or_404(ctx, site_id)
+    conn = await conns.get_connection(ctx.session, site.id, DeployMethod.cloudflare)
+    if conn is None:
+        raise HTTPException(404, "Cloudflare is not set up for this site yet.")
+    conn.meta = {**conn.meta, "kill_switch": body.off}
+    service.log_event(ctx.session, site, "kill_switch", actor_id=ctx.user.id, off=body.off)
+    await ctx.session.commit()
+    return connection_out(conn, site)
+
+
+@router.post("/connections/{method}/test", response_model=TestOut)
+async def test_connection(site_id: uuid.UUID, method: DeployMethod, ctx: AdminCtx) -> TestOut:
+    site = await site_or_404(ctx, site_id)
+    conn = await conns.get_connection(ctx.session, site.id, method)
+    if conn is None:
+        raise HTTPException(404, "That deployer is not set up for this site yet.")
+    result = await conns.run_test(ctx.session, site, conn)
+    if (
+        result.ok
+        and site.deploy_method is None
+        and len(await conns.list_connections(ctx.session, site.id)) == 1
+    ):
+        site.deploy_method = method.value
+    await ctx.session.commit()
+    return TestOut(ok=result.ok, message=result.message, connection=connection_out(conn, site))
+
+
+@router.delete("/connections/{method}", status_code=204)
+async def disconnect(site_id: uuid.UUID, method: DeployMethod, ctx: AdminCtx) -> None:
+    site = await site_or_404(ctx, site_id)
+    conn = await conns.get_connection(ctx.session, site.id, method)
+    if conn is None:
+        raise HTTPException(404, "That deployer is not set up for this site.")
+    live = await service.live_deployments(ctx.session, site.id)
+    if any(d.method is method for ds in live.values() for d in ds):
+        raise HTTPException(409, "Roll back this deployer's live changes before disconnecting it.")
+    await conns.remove_connection(ctx.session, site, conn)
+    await ctx.session.commit()
+
+
+# ---- rollback -------------------------------------------------------------------------------------------------
+class RollbackIn(BaseModel):
+    deployment_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class RollbackOut(BaseModel):
+    reverted: list[DeploymentOut]
+    skipped: list[SkippedOut]
+
+
+def _rollback_out(result: rollback.RollbackResult) -> RollbackOut:
+    return RollbackOut(
+        reverted=[deployment_out(d) for d in result.reverted],
+        skipped=[SkippedOut(action_id=s.action_id, reason=s.reason) for s in result.skipped],
+    )
+
+
+@router.post("/rollback", response_model=RollbackOut)
+async def rollback_selected(site_id: uuid.UUID, body: RollbackIn, ctx: AdminCtx) -> RollbackOut:
+    """Undo deployments. Allowed even if the ownership proof has lapsed. Idempotent: already reverted ones are
+    simply reported as skipped."""
+    site = await site_or_404(ctx, site_id)
+    deps = (
+        await ctx.session.scalars(
+            sa.select(Deployment).where(Deployment.site_id == site.id, Deployment.id.in_(body.deployment_ids))
+        )
+    ).all()
+    result = await rollback.rollback_deployments(ctx.session, site, deps, user_id=ctx.user.id)
+    return _rollback_out(result)
+
+
+@router.post("/batches/{batch_id}/rollback", response_model=RollbackOut)
+async def rollback_whole_batch(site_id: uuid.UUID, batch_id: uuid.UUID, ctx: AdminCtx) -> RollbackOut:
+    site = await site_or_404(ctx, site_id)
+    batch = await ctx.session.scalar(
+        sa.select(DeployBatch).where(DeployBatch.id == batch_id, DeployBatch.site_id == site.id)
+    )
+    if batch is None:
+        raise HTTPException(404, "Batch not found")
+    result = await rollback.rollback_batch(ctx.session, site, batch, user_id=ctx.user.id)
+    return _rollback_out(result)
+
+
+@router.get("/batches/{batch_id}", response_model=DeployResultOut)
+async def get_batch(site_id: uuid.UUID, batch_id: uuid.UUID, ctx: ReadCtx) -> DeployResultOut:
+    site = await site_or_404(ctx, site_id)
+    batch = await ctx.session.scalar(
+        sa.select(DeployBatch).where(DeployBatch.id == batch_id, DeployBatch.site_id == site.id)
+    )
+    if batch is None:
+        raise HTTPException(404, "Batch not found")
+    deps = (
+        await ctx.session.scalars(
+            sa.select(Deployment)
+            .where(Deployment.batch_id == batch.id)
+            .order_by(Deployment.created_at, Deployment.id)
+        )
+    ).all()
+    skipped = [
+        SkippedOut(action_id=uuid.UUID(s["action_id"]), reason=s["reason"])
+        for s in batch.summary.get("skipped", [])
+    ]
+    return DeployResultOut(
+        batch=await batch_out(ctx.session, batch),
+        deployments=[deployment_out(d) for d in deps],
+        skipped=skipped,
+    )

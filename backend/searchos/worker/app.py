@@ -36,6 +36,10 @@ app.conf.update(
             "task": "searchos.bing.nightly",
             "schedule": crontab(hour=23, minute=45),
         },
+        "deploy-sweep": {
+            "task": "searchos.deploy.sweep",
+            "schedule": crontab(minute="*/10"),
+        },
     },
 )
 

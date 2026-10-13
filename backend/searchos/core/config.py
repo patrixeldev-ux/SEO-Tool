@@ -66,7 +66,8 @@ class Settings(BaseSettings):
 
     # --- Deployers (Phase 4). All optional; the defaults are the real vendor endpoints. ---
     # The API base URLs can be pointed at a local stand-in for tests and the dev smoke run.
-    cloudflare_api_base: str = "https://api.cloudflare.com/client/v4"
+    # The address the Cloudflare Worker uses to fetch its (signed) rules: it must be reachable from the internet.
+    public_api_url: str = "http://localhost:8000"
     github_api_base: str = "https://api.github.com"
     # Development and tests only: let the deploy tooling fetch pages on private / loopback addresses
     # (the ownership file check, the live-HTML read before a deploy, the post-deploy verification).

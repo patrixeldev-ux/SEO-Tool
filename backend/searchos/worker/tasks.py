@@ -99,6 +99,24 @@ def bing_nightly() -> int:
     return asyncio.run(_nightly_bing())
 
 
+@app.task(name="searchos.deploy.verify")
+def deploy_verify_task(deployment_id: str) -> None:
+    """One verification attempt for a deployment; schedules the next attempt itself while the answer is 'retry'."""
+    from searchos.worker.deploy_jobs import run_verify
+
+    outcome = asyncio.run(run_verify(uuid.UUID(deployment_id)))
+    if outcome.state == "retry" and outcome.next_delay:
+        deploy_verify_task.apply_async(args=[deployment_id], countdown=outcome.next_delay)
+
+
+@app.task(name="searchos.deploy.sweep")
+def deploy_sweep() -> dict[str, int]:
+    """Beat-scheduled (every 10 minutes): re-queue lost verifications and check open pull requests."""
+    from searchos.worker.deploy_jobs import sweep_unverified
+
+    return asyncio.run(sweep_unverified())
+
+
 @app.task(name="searchos.demo")
 def demo_task(job_id: str) -> None:
     asyncio.run(run_job(uuid.UUID(job_id), demo_handler))

@@ -65,10 +65,11 @@ ignore = [
   "E501",   # `ruff format` wraps code; long comments and message strings are allowed
   "B008",   # FastAPI Depends() in argument defaults is idiomatic
   "RUF012", # mutable class attrs on pydantic/sqlalchemy models
+  "SIM905", # str.split on literal word lists is readable
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106", "S311", "E501"]
+"tests/**" = ["F811", "RUF059", "S101", "S105", "S106", "S311", "E501"]
 "searchos/seed_demo.py" = ["S105", "S106"]
 
 [tool.mypy]

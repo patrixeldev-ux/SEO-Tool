@@ -1,6 +1,15 @@
 from searchos.models.action import Action, LlmUsage
 from searchos.models.base import Base
 from searchos.models.crawl import AuditSnapshot, Crawl, CrawlStatus, Issue, Link, Page
+from searchos.models.deploy import (
+    BatchStatus,
+    BatchTrigger,
+    DeployBatch,
+    Deployment,
+    DeploymentEvent,
+    DeploymentStatus,
+    DeployMethod,
+)
 from searchos.models.integration import ConnectionStatus, IntegrationConnection, Provider
 from searchos.models.job import Job, JobStatus
 from searchos.models.org import ROLE_RANK, Membership, Org, Role, role_at_least
@@ -25,10 +34,17 @@ __all__ = [
     "AiReportRow",
     "AuditSnapshot",
     "Base",
+    "BatchStatus",
+    "BatchTrigger",
     "BingRow",
     "ConnectionStatus",
     "Crawl",
     "CrawlStatus",
+    "DeployBatch",
+    "DeployMethod",
+    "Deployment",
+    "DeploymentEvent",
+    "DeploymentStatus",
     "GscDailyTotal",
     "GscRow",
     "IntegrationConnection",
