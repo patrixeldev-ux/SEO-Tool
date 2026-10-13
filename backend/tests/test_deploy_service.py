@@ -477,7 +477,7 @@ async def test_batch_trigger_is_recorded(
 
 def test_schedule_for_github_is_longer_than_default() -> None:
     from searchos.deploy.verify import DEFAULT_SCHEDULE, GITHUB_SCHEDULE, schedule_for
-    from searchos.models.enums import DeployMethod
+    from searchos.models.deploy import DeployMethod
 
     assert schedule_for(DeployMethod.github) is GITHUB_SCHEDULE
     assert schedule_for(DeployMethod.cloudflare) is DEFAULT_SCHEDULE
