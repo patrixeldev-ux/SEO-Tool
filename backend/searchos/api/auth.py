@@ -100,6 +100,11 @@ async def register(
     settings: SettingsDep,
     x_client_type: Annotated[str | None, Header()] = None,
 ) -> TokenResponse:
+    if not settings.allow_registration:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Sign-up is turned off on this server. Ask the administrator for an account.",
+        )
     try:
         user, _org, tokens = await auth_service.register(
             session,
