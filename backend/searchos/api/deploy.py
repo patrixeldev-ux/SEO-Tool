@@ -20,9 +20,11 @@ from searchos.core.crypto import decrypt_json
 from searchos.core.deps import OrgContext, require_role
 from searchos.deploy import connections as conns
 from searchos.deploy import ownership, rollback, schedule, service
+from searchos.deploy.base import DeployerError
 from searchos.deploy.cloudflare import EDGE_HEADER  # noqa: F401
 from searchos.deploy.ops import DEPLOYABLE_TYPES
 from searchos.deploy.signing import new_signing_secret, new_site_token
+from searchos.deploy.wordpress import check_site_url
 from searchos.models import (
     Action,
     BatchStatus,
@@ -363,6 +365,44 @@ def _cloudflare_setup(site: Site, conn: IntegrationConnection) -> CloudflareSetu
         route=f"{site.domain}/*",
         connection=connection_out(conn, site),
     )
+
+
+class WordPressIn(BaseModel):
+    site_url: str = Field(min_length=8, max_length=300)
+    username: str = Field(min_length=1, max_length=120)
+    application_password: str = Field(min_length=8, max_length=200)
+
+
+@router.put("/connections/wordpress", response_model=TestOut)
+async def connect_wordpress(site_id: uuid.UUID, body: WordPressIn, ctx: AdminCtx) -> TestOut:
+    """Store the WordPress address, user and Application Password (encrypted) and test them right away."""
+    site = await site_or_404(ctx, site_id)
+    try:
+        url = check_site_url(site, body.site_url, allow_private=get_settings().deploy_allow_private_hosts)
+    except DeployerError as exc:
+        raise HTTPException(422, str(exc)) from None
+    conn = await conns.save_connection(
+        ctx.session,
+        site,
+        DeployMethod.wordpress,
+        user_id=ctx.user.id,
+        credentials={
+            "site_url": url,
+            "username": body.username.strip(),
+            "application_password": body.application_password.replace(" ", ""),
+        },
+        meta={"site_url": url, "username": body.username.strip()},
+        label=f"WordPress ({body.username.strip()})",
+    )
+    result = await conns.run_test(ctx.session, site, conn)
+    if (
+        result.ok
+        and site.deploy_method is None
+        and len(await conns.list_connections(ctx.session, site.id)) == 1
+    ):
+        site.deploy_method = DeployMethod.wordpress.value
+    await ctx.session.commit()
+    return TestOut(ok=result.ok, message=result.message, connection=connection_out(conn, site))
 
 
 @router.put("/connections/cloudflare", response_model=CloudflareSetupOut)

@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -282,7 +282,17 @@ async def deploy_actions(
             result.skipped.append(Skipped(action_id, "Action not found on this site."))
             continue
         reason = await _prepare(
-            session, site, action, batch, via_autopilot, fetcher, html_cache, seen_slots, chosen, now
+            session,
+            site,
+            action,
+            batch,
+            via_autopilot,
+            fetcher,
+            html_cache,
+            seen_slots,
+            chosen,
+            now,
+            getattr(deployer, "unsupported_ops", {}),
         )
         if reason:
             result.skipped.append(Skipped(action_id, reason))
@@ -381,6 +391,7 @@ async def _prepare(
     seen_slots: set[tuple[str, str]],
     chosen: list[Deployment],
     now: datetime,
+    unsupported_ops: Mapping[str, str] | None = None,
 ) -> str | None:
     """Everything that must hold before a deployment row is written. Returns the reason to skip, or None."""
     if action.status is not ActionStatus.approved:
@@ -399,6 +410,9 @@ async def _prepare(
         ops = ops_for_action(action.type, action.field, action.proposed_value, action.id)
     except NotDeployableError as exc:
         return str(exc)
+    for op in ops:
+        if unsupported_ops and op["op"] in unsupported_ops:
+            return unsupported_ops[op["op"]]
 
     if url not in html_cache:
         resp = await fetcher.get(url, no_cache=True)

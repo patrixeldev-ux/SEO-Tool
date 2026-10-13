@@ -119,6 +119,122 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+  wordpress:
+    name: "WordPress plugin (real WordPress + MariaDB; deploy, verify, rollback)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: searchos
+          POSTGRES_PASSWORD: searchos
+          POSTGRES_DB: searchos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U searchos -d searchos"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://searchos:searchos@localhost:5432/searchos
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-only-secret-0123456789-0123456789-abcdef
+      CORS_ORIGINS: http://localhost:5173
+      # The test WordPress is on localhost
+      DEPLOY_ALLOW_PRIVATE_HOSTS: "true"
+      WP_TEST_URL: http://wp.test:8080
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax check of the plugin
+        run: |
+          php -v
+          find wp-plugin -name '*.php' -print0 | xargs -0 -n1 php -l
+      - run: echo "127.0.0.1 wp.test" | sudo tee -a /etc/hosts
+      - name: Start MariaDB and WordPress (official images) with the plugin mounted
+        run: |
+          docker network create wpnet
+          docker run -d --name db --network wpnet \
+            -e MARIADB_ROOT_PASSWORD=root -e MARIADB_DATABASE=wordpress -e MARIADB_USER=wp -e MARIADB_PASSWORD=wp \
+            mariadb:11
+          docker run -d --name wp --network wpnet -p 8080:80 \
+            -e WORDPRESS_DB_HOST=db -e WORDPRESS_DB_USER=wp -e WORDPRESS_DB_PASSWORD=wp -e WORDPRESS_DB_NAME=wordpress \
+            -e "WORDPRESS_CONFIG_EXTRA=define('WP_ENVIRONMENT_TYPE','local'); define('WP_HOME','http://wp.test:8080'); define('WP_SITEURL','http://wp.test:8080');" \
+            -v "$PWD/wp-plugin/searchos-connector:/var/www/html/wp-content/plugins/searchos-connector:ro" \
+            -v "$PWD/wp-plugin/tests/fake-seo-plugin.php:/var/www/html/wp-content/mu-plugins/fake-seo-plugin.php:ro" \
+            -v "$PWD/wp-plugin/tests/pixel.png:/tmp/pixel.png:ro" \
+            wordpress:6-php8.2-apache
+          for i in $(seq 1 60); do
+            curl -s -o /dev/null -w '%{http_code}' http://wp.test:8080/ | grep -qE '^(200|302)$' && exit 0
+            sleep 3
+          done
+          docker logs wp | tail -30
+          exit 1
+      - name: Install WordPress, activate the plugin, create content and an application password (wp-cli)
+        run: |
+          wpcli() {
+            docker run --rm --network wpnet --volumes-from wp --user 33:33 \
+              -v "$PWD/wp-plugin/tests/pixel.png:/tmp/pixel.png:ro" \
+              -e WORDPRESS_DB_HOST=db -e WORDPRESS_DB_USER=wp -e WORDPRESS_DB_PASSWORD=wp -e WORDPRESS_DB_NAME=wordpress \
+              wordpress:cli wp --path=/var/www/html "$@"
+          }
+          wpcli core install --url=http://wp.test:8080 --title="Test WP" --admin_user=admin --admin_password=adminpass123 --admin_email=admin@example.com --skip-email
+          wpcli plugin activate searchos-connector
+          wpcli rewrite structure '/%postname%/' --hard
+          ATT=$(wpcli media import /tmp/pixel.png --porcelain)
+          IMG=$(wpcli post get "$ATT" --field=guid)
+          wpcli post create --post_type=post --post_status=publish --post_title="Coffee grinders" --post_name=coffee-grinders \
+            --post_content="<p>We sell burr grinders for home brewing.</p><img src=\"$IMG\" alt=\"\">"
+          PW=$(wpcli user application-password create admin searchos --porcelain)
+          echo "WP_TEST_USER=admin" >> "$GITHUB_ENV"
+          echo "WP_TEST_APP_PASSWORD=$PW" >> "$GITHUB_ENV"
+          curl -fsS http://wp.test:8080/coffee-grinders/ | grep -q "Coffee grinders"
+          curl -fsS -u "admin:$PW" http://wp.test:8080/wp-json/searchos/v1/status
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          python-version: "3.12"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen
+      - name: "Deploy, verify raw HTML, roll back, original is back (no SEO plugin)"
+        working-directory: backend
+        run: uv run pytest tests/test_deploy_wordpress_live.py -q
+      - name: "The same with an SEO plugin active (Yoast test double, filters and @graph JSON-LD)"
+        working-directory: backend
+        run: |
+          docker run --rm --network wpnet --volumes-from wp --user 33:33 \
+            -e WORDPRESS_DB_HOST=db -e WORDPRESS_DB_USER=wp -e WORDPRESS_DB_PASSWORD=wp -e WORDPRESS_DB_NAME=wordpress \
+            wordpress:cli wp --path=/var/www/html option update searchos_fake_seo yoast
+          WP_TEST_FAKE_SEO=yoast uv run pytest tests/test_deploy_wordpress_live.py -q
+      - name: Deleting the plugin removes what it stored
+        run: |
+          wpcli() {
+            docker run --rm --network wpnet --volumes-from wp --user 33:33 \
+              -e WORDPRESS_DB_HOST=db -e WORDPRESS_DB_USER=wp -e WORDPRESS_DB_PASSWORD=wp -e WORDPRESS_DB_NAME=wordpress \
+              wordpress:cli wp --path=/var/www/html "$@"
+          }
+          PW="$WP_TEST_APP_PASSWORD"
+          curl -fsS -u "admin:$PW" -X PUT -H 'Content-Type: application/json' http://wp.test:8080/wp-json/searchos/v1/overrides \
+            -d '{"url":"http://wp.test:8080/coffee-grinders/","set":{"title":"Uninstall check title"}}'
+          test "$(wpcli db query "SELECT COUNT(*) FROM wp_postmeta WHERE meta_key='_searchos_overrides'" --skip-column-names)" = "1"
+          wpcli plugin deactivate searchos-connector
+          wpcli plugin uninstall searchos-connector --skip-delete || true
+          wpcli eval 'define("WP_UNINSTALL_PLUGIN", true); include WP_PLUGIN_DIR . "/searchos-connector/uninstall.php";'
+          test "$(wpcli db query "SELECT COUNT(*) FROM wp_postmeta WHERE meta_key='_searchos_overrides'" --skip-column-names)" = "0"
+
   compose:
     name: Docker dev stack boots (build, migrate, seed, login, web)
     runs-on: ubuntu-latest

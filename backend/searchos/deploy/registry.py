@@ -24,6 +24,7 @@ def get_deployer(method: DeployMethod) -> Deployer:
 def _load_defaults() -> None:
     # imported here so importing the registry never pulls in every client library
     from searchos.deploy.cloudflare import CloudflareDeployer
+    from searchos.deploy.wordpress import WordPressDeployer
 
-    for d in (CloudflareDeployer(),):
+    for d in (CloudflareDeployer(), WordPressDeployer()):
         _DEPLOYERS.setdefault(d.method, d)
