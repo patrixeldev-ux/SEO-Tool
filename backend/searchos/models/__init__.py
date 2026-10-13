@@ -9,6 +9,7 @@ from searchos.models.deploy import (
     DeploymentEvent,
     DeploymentStatus,
     DeployMethod,
+    Notification,
 )
 from searchos.models.integration import ConnectionStatus, IntegrationConnection, Provider
 from searchos.models.job import Job, JobStatus
@@ -54,6 +55,7 @@ __all__ = [
     "Link",
     "LlmUsage",
     "Membership",
+    "Notification",
     "Opportunity",
     "Org",
     "Page",

@@ -7,7 +7,7 @@ may read. No endpoint that changes a site works until its ownership is verified;
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, NoReturn
 
 import sqlalchemy as sa
@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from searchos.core.config import get_settings
 from searchos.core.crypto import decrypt_json
 from searchos.core.deps import OrgContext, require_role
+from searchos.deploy import autopilot, ownership, rollback, schedule, service
 from searchos.deploy import connections as conns
-from searchos.deploy import ownership, rollback, schedule, service
 from searchos.deploy.base import DeployerError
 from searchos.deploy.cloudflare import EDGE_HEADER  # noqa: F401
 from searchos.deploy.github import REPO_RE
@@ -622,3 +622,56 @@ async def get_batch(site_id: uuid.UUID, batch_id: uuid.UUID, ctx: ReadCtx) -> De
         deployments=[deployment_out(d) for d in deps],
         skipped=skipped,
     )
+
+
+# ---- autopilot ---------------------------------------------------------------------------------------------
+class AutopilotOut(BaseModel):
+    enabled: bool
+    weekly_cap: int
+    used_this_week: int
+    max_cap: int
+    ready: bool  # verified site + connected deployer
+    note: str
+
+
+class AutopilotIn(BaseModel):
+    enabled: bool | None = None
+    weekly_cap: int | None = Field(default=None, ge=0, le=autopilot.MAX_WEEKLY_CAP)
+
+
+async def autopilot_out(ctx: OrgContext, site: Site) -> AutopilotOut:
+    used = await autopilot.changes_in_last_week(ctx.session, site, datetime.now(UTC))
+    ready = site.verified_at is not None
+    note = "Autopilot is off." if not site.autopilot_enabled else "Autopilot checks once a day."
+    if ready:
+        try:
+            await service.chosen_method(ctx.session, site)
+        except service.DeployError as exc:
+            ready, note = False, str(exc)
+    else:
+        note = "Prove you own this site first (Settings, Deploy)."
+    return AutopilotOut(
+        enabled=site.autopilot_enabled,
+        weekly_cap=autopilot.weekly_cap(site),
+        used_this_week=used,
+        max_cap=autopilot.MAX_WEEKLY_CAP,
+        ready=ready,
+        note=note,
+    )
+
+
+@router.get("/autopilot", response_model=AutopilotOut)
+async def get_autopilot(site_id: uuid.UUID, ctx: ReadCtx) -> AutopilotOut:
+    site = await ctx.get_or_404(Site, site_id, "Site")
+    return await autopilot_out(ctx, site)
+
+
+@router.put("/autopilot", response_model=AutopilotOut)
+async def put_autopilot(site_id: uuid.UUID, body: AutopilotIn, ctx: AdminCtx) -> AutopilotOut:
+    site = await ctx.get_or_404(Site, site_id, "Site")
+    if body.weekly_cap is not None:
+        site.settings = {**site.settings, autopilot.CAP_KEY: body.weekly_cap}
+    if body.enabled is not None:
+        site.autopilot_enabled = body.enabled
+    await ctx.session.commit()
+    return await autopilot_out(ctx, site)

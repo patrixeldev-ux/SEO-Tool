@@ -56,3 +56,9 @@ async def sweep_unverified() -> dict[str, Any]:
         return {"requeued": len(ids), "merged": len(merged)}
 
     return await with_sessions(go)
+
+
+async def run_autopilot() -> dict[str, Any]:
+    from searchos.deploy.autopilot import run_autopilot_all
+
+    return await with_sessions(run_autopilot_all)

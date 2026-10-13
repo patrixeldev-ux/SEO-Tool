@@ -117,6 +117,14 @@ def deploy_sweep() -> dict[str, int]:
     return asyncio.run(sweep_unverified())
 
 
+@app.task(name="searchos.deploy.autopilot")
+def deploy_autopilot() -> dict[str, Any]:
+    """Beat-scheduled (daily): deploy the low-risk changes of every site that has autopilot ON, within its limits."""
+    from searchos.worker.deploy_jobs import run_autopilot
+
+    return asyncio.run(run_autopilot())
+
+
 @app.task(name="searchos.demo")
 def demo_task(job_id: str) -> None:
     asyncio.run(run_job(uuid.UUID(job_id), demo_handler))

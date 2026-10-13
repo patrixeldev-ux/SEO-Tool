@@ -163,3 +163,22 @@ class DeploymentEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.clock_timestamp()
     )
+
+
+class Notification(IdMixin, CreatedAtMixin, Base):
+    """An in-app message for the organisation's owners (e.g. "autopilot made 5 changes")."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (sa.Index("ix_notifications_org_id_created_at", "org_id", "created_at"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False
+    )
+    site_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, sa.ForeignKey("sites.id", ondelete="CASCADE"))
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("deploy_batches.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(sa.String(40), nullable=False)  # autopilot_batch
+    title: Mapped[str] = mapped_column(sa.String(200), nullable=False)
+    body: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    read_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
