@@ -404,7 +404,7 @@ async def test_verification_waits_for_a_slow_cdn_then_succeeds(
     assert dep.verify_attempts == len(seen)
 
 
-async def test_verification_fails_after_ten_minutes_with_the_observed_value(
+async def test_verification_fails_after_two_minutes_with_the_observed_value_and_rolls_back(
     client: AsyncClient, session: AsyncSession, fake_registry: Any
 ) -> None:
     site, web, _, _, _ = await setup_site(client, session, fake_registry, lag=10_000)
@@ -419,8 +419,10 @@ async def test_verification_fails_after_ten_minutes_with_the_observed_value(
             break
         t += timedelta(seconds=final.next_delay or 0)
     assert final is not None and final.state == "failed"
-    assert t - NOW <= timedelta(minutes=11)
-    assert dep.status is DeploymentStatus.failed and "Old title" in (dep.error or "")
+    assert t - NOW <= timedelta(minutes=2)
+    # three retries after the first attempt, then the change is taken back automatically
+    assert dep.verify_attempts == 4
+    assert dep.status is DeploymentStatus.reverted and "Old title" in (dep.error or "")
     assert dep.after_snapshot is not None and dep.after_snapshot["value"] == "Old title"
     await session.refresh(action)
     assert action.status is ActionStatus.approved  # may be deployed again, or the change rolled back
@@ -471,3 +473,12 @@ async def test_batch_trigger_is_recorded(
     assert Provider.cloudflare.value == result.batch.method.value
     count = await session.scalar(sa.select(sa.func.count()).select_from(Action))
     assert count == 1
+
+
+def test_schedule_for_github_is_longer_than_default() -> None:
+    from searchos.deploy.verify import DEFAULT_SCHEDULE, GITHUB_SCHEDULE, schedule_for
+    from searchos.models.enums import DeployMethod
+
+    assert schedule_for(DeployMethod.github) is GITHUB_SCHEDULE
+    assert schedule_for(DeployMethod.cloudflare) is DEFAULT_SCHEDULE
+    assert GITHUB_SCHEDULE.window > DEFAULT_SCHEDULE.window

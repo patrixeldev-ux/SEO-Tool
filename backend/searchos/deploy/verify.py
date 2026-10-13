@@ -1,8 +1,10 @@
 """Post-deploy verification: is the change in the raw HTML a crawler without JavaScript receives?
 
-Each attempt re-fetches the page with a cache-busting query parameter and `Cache-Control: no-cache`. A CDN may
-still serve the old copy for a while, so a miss is retried with growing pauses for up to 10 minutes; only then is
-the deployment marked failed, with the value that was actually seen.
+Each attempt re-fetches the page with a cache-busting query parameter and `Cache-Control: no-cache`. A cache may
+still serve the old copy for a moment, so a miss is retried 3 times over about 2 minutes (a GitHub change, which
+only appears after the owner merges and the site is rebuilt, gets up to 30 minutes after the merge). When the time
+is up the deployment is marked failed with the value that was actually seen, and that change is rolled back
+automatically: a change that cannot be seen by a crawler must not stay half-applied.
 """
 
 from __future__ import annotations
@@ -17,12 +19,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from searchos.deploy import htmlview
 from searchos.deploy.livefetch import PageFetcher, default_fetcher
 from searchos.deploy.service import log_event, refresh_batch
-from searchos.models import Action, DeployBatch, Deployment, DeploymentStatus, Site
+from searchos.models import Action, DeployBatch, Deployment, DeploymentStatus, DeployMethod, Site
 from searchos.planner.catalog import ActionStatus
 
-WINDOW = timedelta(minutes=10)
-# Seconds to wait before attempt 2, 3, ...: 20+40+80+160+300 s, so the last attempt falls just inside 10 minutes.
-RETRY_DELAYS: tuple[int, ...] = (20, 40, 80, 160, 300)
+
+@dataclass(frozen=True, slots=True)
+class Schedule:
+    delays: tuple[int, ...]  # seconds to wait before attempt 2, 3, ...
+    window: timedelta
+
+
+# Attempts at 0, 15, 45 and 105 seconds: three retries inside two minutes.
+DEFAULT_SCHEDULE = Schedule((15, 30, 60), timedelta(minutes=2))
+# After the merge: 1, 3, 8, 18 and 33 minutes (site builds take a while).
+GITHUB_SCHEDULE = Schedule((60, 120, 300, 600, 900), timedelta(minutes=40))
+RETRY_DELAYS: tuple[int, ...] = DEFAULT_SCHEDULE.delays
+
+
+def schedule_for(method: DeployMethod) -> Schedule:
+    return GITHUB_SCHEDULE if method is DeployMethod.github else DEFAULT_SCHEDULE
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,12 +108,13 @@ async def verify_deployment(
         await session.commit()
         return VerifyOutcome("verified", observed=observed)
 
-    out_of_time = now - dep.verify_started_at >= WINDOW - timedelta(seconds=1)
-    out_of_tries = dep.verify_attempts > len(RETRY_DELAYS)
+    plan = schedule_for(dep.method)
+    out_of_time = now - dep.verify_started_at >= plan.window - timedelta(seconds=1)
+    out_of_tries = dep.verify_attempts > len(plan.delays)
     if out_of_time or out_of_tries:
         seen = f"The page could not be read ({problem})." if problem else f"The page shows: {observed!r}"
         dep.status = DeploymentStatus.failed
-        dep.error = f"After {dep.verify_attempts} checks over 10 minutes the new value is not in the page's HTML. {seen}"[
+        dep.error = f"After {dep.verify_attempts} checks the new value is not in the page's HTML. {seen}"[
             :600
         ]
         dep.after_snapshot = {
@@ -114,9 +130,10 @@ async def verify_deployment(
         )
         await _refresh(session, dep, now)
         await session.commit()
+        await _auto_rollback(session, site, dep, fetcher, now)
         return VerifyOutcome("failed", observed=observed)
 
-    delay = RETRY_DELAYS[min(dep.verify_attempts - 1, len(RETRY_DELAYS) - 1)]
+    delay = plan.delays[min(dep.verify_attempts - 1, len(plan.delays) - 1)]
     log_event(
         session,
         site,
@@ -128,6 +145,25 @@ async def verify_deployment(
     )
     await session.commit()
     return VerifyOutcome("retry", next_delay=delay, observed=observed)
+
+
+async def _auto_rollback(
+    session: AsyncSession, site: Site, dep: Deployment, fetcher: PageFetcher, now: datetime
+) -> None:
+    """Undo a change that verification could not find. The deployment keeps its error text; if the rollback
+    itself fails, it stays `failed` and live so the person sees it and can use Roll back."""
+    from searchos.deploy.rollback import rollback_deployments
+
+    result = await rollback_deployments(
+        session, site, [dep], user_id=None, reason="verification failed", fetcher=fetcher, now=now
+    )
+    if not result.reverted:
+        reason = result.skipped[0].reason if result.skipped else "unknown reason"
+        dep.error = f"{dep.error or ''} Automatic rollback failed: {reason}"[:900]
+        log_event(
+            session, site, "auto_rollback_failed", batch_id=dep.batch_id, deployment_id=dep.id, error=reason
+        )
+        await session.commit()
 
 
 async def verify_by_id(
