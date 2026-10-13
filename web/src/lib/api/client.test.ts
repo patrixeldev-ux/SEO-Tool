@@ -155,3 +155,38 @@ describe("ApiClient", () => {
     expect(client.getAccessToken()).toBeNull();
   });
 });
+
+describe("ApiClient behind a path prefix (production: same origin, API under /api)", () => {
+  it("builds relative URLs under the prefix, with or without a trailing slash", async () => {
+    for (const baseUrl of ["/api", "/api/"]) {
+      const seen: string[] = [];
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        seen.push(String(input));
+        return json([]);
+      });
+      const client = new ApiClient({ baseUrl, fetch: fetchMock as unknown as typeof fetch });
+      await client.listSites();
+      expect(seen).toEqual(["/api/sites"]);
+    }
+  });
+
+  it("refreshes through the prefixed auth path and replays the request", async () => {
+    const seen: string[] = [];
+    let first = true;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      seen.push(url);
+      if (url === "/api/auth/refresh") return json(tokens("fresh"));
+      if (first) {
+        first = false;
+        return json({ detail: "expired" }, 401);
+      }
+      return json([]);
+    });
+    const client = new ApiClient({ baseUrl: "/api", fetch: fetchMock as unknown as typeof fetch });
+    client.setAccessToken("old");
+    await client.listSites();
+    expect(seen).toEqual(["/api/sites", "/api/auth/refresh", "/api/sites"]);
+  });
+});
+
