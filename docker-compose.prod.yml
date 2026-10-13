@@ -52,6 +52,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # Lets a Caddyfile block reach another project running on the same VM (docs/DEPLOY_ORACLE.md, "Sharing the VM").
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       SITE_ADDRESS: ${DOMAIN:?set DOMAIN in .env.prod}
       CADDY_TLS_INTERNAL: ${CADDY_TLS_INTERNAL:-0}
