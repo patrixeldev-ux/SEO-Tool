@@ -19,5 +19,6 @@
     "typescript": "^7.0.2",
     "vitest": "^4.1.11",
     "wrangler": "^4.149.0"
-  }
+  },
+  "packageManager": "pnpm@10.28.0"
 }
