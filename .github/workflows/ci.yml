@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -341,3 +342,163 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: docker compose -f docker-compose.dev.yml logs --tail=200
+
+  deploy-lint:
+    name: Deploy kit lint (shellcheck, PowerShell parse, compose config, Caddyfile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck every shell script
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -x deploy/oracle/*.sh scripts/*.sh
+      - name: PowerShell scripts parse (Windows PowerShell 5.1 syntax subset) and are ASCII only
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem scripts/*.ps1) {
+            $errors = $null; $tokens = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$($f.Name): $_" }; exit 1 }
+            if ([System.IO.File]::ReadAllBytes($f.FullName) | Where-Object { $_ -gt 127 }) { Write-Error "$($f.Name) contains non-ASCII characters"; exit 1 }
+          }
+      - name: docker-compose.prod.yml parses
+        run: |
+          printf 'DOMAIN=x.example\nPOSTGRES_PASSWORD=x\nJWT_SECRET=x\nTOKEN_ENCRYPTION_KEY=x\n' > .env.prod
+          docker compose --env-file .env.prod -f docker-compose.prod.yml config --quiet
+          # Only Caddy publishes ports.
+          test "$(docker compose --env-file .env.prod -f docker-compose.prod.yml config --format json | jq -r '[.services | to_entries[] | select(.value.ports != null) | .key] | join(",")')" = "caddy"
+      - name: Caddyfile is valid
+        run: |
+          mkdir -p /tmp/caddy-etc && cp deploy/caddy/Caddyfile /tmp/caddy-etc/Caddyfile && cp deploy/caddy/tls-0.caddy /tmp/caddy-etc/tls.caddy
+          sed -i 's#/etc/caddy/tls.caddy#/tmp/caddy-etc/tls.caddy#' /tmp/caddy-etc/Caddyfile
+          docker run --rm -e SITE_ADDRESS=203-0-113-10.sslip.io -v /tmp/caddy-etc:/tmp/caddy-etc:ro caddy:2-alpine caddy validate --config /tmp/caddy-etc/Caddyfile --adapter caddyfile
+
+  prod-stack:
+    name: Production stack (Caddy + API under /api, HTTPS, cookie path, no exposed DB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      COMPOSE: docker compose --env-file .env.prod -f docker-compose.prod.yml
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create .env.prod (localhost, Caddy's internal CA, random secrets)
+        run: |
+          cat > .env.prod <<EOF
+          DOMAIN=localhost
+          CADDY_TLS_INTERNAL=1
+          POSTGRES_PASSWORD=$(openssl rand -hex 16)
+          JWT_SECRET=$(openssl rand -hex 32)
+          TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')
+          ALLOW_REGISTRATION=false
+          EOF
+      - name: Build the production images
+        run: $COMPOSE build
+      - name: Start the stack and wait for every healthcheck
+        run: $COMPOSE up -d --wait --wait-timeout 600
+      - name: Web app is served at / (SPA) and falls back to index.html
+        run: |
+          curl -ksS --retry 10 --retry-all-errors --retry-delay 3 https://localhost/ | grep -q 'id="root"'
+          curl -ksS https://localhost/sites/some/deep/link | grep -q 'id="root"'
+          curl -ksSI https://localhost/ | tee headers.txt
+          grep -qi '^strict-transport-security:' headers.txt
+          grep -qi '^x-content-type-options: nosniff' headers.txt
+          grep -qi '^referrer-policy:' headers.txt
+          grep -qi "^content-security-policy: .*frame-ancestors 'none'" headers.txt
+          ASSET=$(curl -ksS https://localhost/ | grep -o '/assets/[^"]*\.js' | head -n 1)
+          curl -ksSI "https://localhost$ASSET" | grep -qi 'cache-control: .*immutable'
+      - name: API answers under /api (prefix stripped)
+        run: |
+          test "$(curl -ksS -o /dev/null -w '%{http_code}' https://localhost/api/health)" = "200"
+          test "$(curl -ksS -o /dev/null -w '%{http_code}' https://localhost/api/docs)" = "404"
+          test "$(curl -ksS -o /dev/null -w '%{http_code}' https://localhost/api/openapi.json)" = "404"
+          case "$(curl -ksS -o /dev/null -w '%{http_code}' -X POST https://localhost/api/jobs/demo -H 'Content-Type: application/json' -d '{}')" in 404|405) ;; *) echo "demo endpoint is exposed"; exit 1 ;; esac
+      - name: Public sign-up is off; the create_user CLI makes the first account
+        run: |
+          test "$(curl -ksS -o /dev/null -w '%{http_code}' -X POST https://localhost/api/auth/register -H 'Content-Type: application/json' -d '{"email":"x@example.com","password":"correct horse battery","org_name":"X"}')" = "403"
+          printf '%s\n' 'correct horse battery' | $COMPOSE exec -T api python -m searchos.create_user --email ci@example.com --org "CI Org" --password-stdin
+      - name: Login sets a Secure cookie with Path=/api/auth, and refresh works with it
+        run: |
+          curl -ksS -D login-headers.txt -c jar.txt -o login.json -X POST https://localhost/api/auth/login \
+            -H 'Content-Type: application/json' -H 'Origin: https://localhost' \
+            -d '{"email":"ci@example.com","password":"correct horse battery"}'
+          cat login-headers.txt
+          grep -qi '^HTTP/[0-9.]* 200' login-headers.txt
+          grep -i '^set-cookie: searchos_refresh=' login-headers.txt | grep -qi 'Path=/api/auth'
+          grep -i '^set-cookie: searchos_refresh=' login-headers.txt | grep -qi 'Secure'
+          grep -i '^set-cookie: searchos_refresh=' login-headers.txt | grep -qi 'HttpOnly'
+          jq -e '.access_token' login.json >/dev/null
+          test "$(curl -ksS -b jar.txt -c jar.txt -o refresh.json -w '%{http_code}' -X POST https://localhost/api/auth/refresh -H 'Origin: https://localhost')" = "200"
+          jq -e '.access_token' refresh.json >/dev/null
+          # A refresh request from a foreign origin is refused.
+          test "$(curl -ksS -b jar.txt -o /dev/null -w '%{http_code}' -X POST https://localhost/api/auth/refresh -H 'Origin: https://evil.example')" = "403"
+      - name: Integrations report the public https redirect URI under /api
+        run: |
+          curl -ksS https://localhost/api/integrations/status | jq -e '.redirect_uri == "https://localhost/api/integrations/google/callback"'
+      - name: Postgres, Redis and the API port are not reachable from the host
+        run: |
+          for p in 5432 6379 8000; do
+            if (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null; then echo "port $p is reachable from the host"; exit 1; fi
+          done
+          $COMPOSE ps --format '{{.Service}} {{.Ports}}' | tee ports.txt
+          ! grep -E '^(postgres|redis|api|worker|beat) .*->' ports.txt
+      - name: Worker has Chromium; beat and worker are running
+        run: |
+          $COMPOSE exec -T worker python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              b = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+              page = b.new_page()
+              page.set_content("<h1 id=x>hello</h1>")
+              assert page.inner_text("#x") == "hello"
+              b.close()
+          print("chromium ok")
+          PY
+          $COMPOSE ps --status running --services | tee running.txt
+          for s in caddy api worker beat postgres redis; do grep -qx "$s" running.txt || { $COMPOSE logs "$s"; exit 1; }; done
+      - name: Data survives a restart (named volumes)
+        run: |
+          $COMPOSE restart api
+          for i in $(seq 1 40); do curl -ksS -o /dev/null -f https://localhost/api/health && break; sleep 3; done
+          curl -ksS -X POST https://localhost/api/auth/login -H 'Content-Type: application/json' -H 'Origin: https://localhost' \
+            -d '{"email":"ci@example.com","password":"correct horse battery"}' | jq -e .access_token >/dev/null
+      - name: Backup script produces a valid dump
+        run: |
+          BACKUP_DIR="$RUNNER_TEMP/backups" deploy/oracle/backup.sh
+          ls -l "$RUNNER_TEMP"/backups
+          gunzip -c "$RUNNER_TEMP"/backups/searchos-*.sql.gz | grep -q 'CREATE TABLE public.users'
+      - name: Logs on failure
+        if: failure()
+        run: $COMPOSE logs --tail=200
+
+  arm64-build:
+    name: Images build for linux/arm64 (Oracle Ampere A1; emulated, build only)
+    # Emulated builds are slow and Chromium's dependencies are heavy. Not blocking; runs on main, manually, and for deploy/* branches.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'deploy/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v3
+      - name: Backend image (Python deps + Chromium) for arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile.prod
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha,scope=arm64-backend
+          cache-to: type=gha,mode=max,scope=arm64-backend
+      - name: Web + Caddy image for arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/caddy/Dockerfile
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha,scope=arm64-caddy
+          cache-to: type=gha,mode=max,scope=arm64-caddy

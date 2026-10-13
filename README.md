@@ -23,5 +23,7 @@ See [docs/LOCAL_TESTING.md](docs/LOCAL_TESTING.md) (Windows + Docker Desktop ins
 
 Phase 0 (foundation), Phase 1 (crawler and audit) and Phase 2 (Search Console, Bing, PageSpeed, opportunities)
 are built; real-account checks for Phase 2 are pending the owner (see [PLAN.md](PLAN.md#progress-log)).
+Putting it online on a free Oracle Cloud server (HTTPS, no domain needed): [docs/DEPLOY_ORACLE.md](docs/DEPLOY_ORACLE.md).
+
 Connecting Google is optional and explained step by step in [docs/GOOGLE_SETUP.md](docs/GOOGLE_SETUP.md).
 Next: Phase 3.

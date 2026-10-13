@@ -1,0 +1,3 @@
+# CADDY_TLS_INTERNAL=1: use Caddy's own local CA (CI, or a hostname that is not reachable from the internet).
+tls internal
+header -Server

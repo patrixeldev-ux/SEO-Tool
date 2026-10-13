@@ -1,0 +1,178 @@
+# Production stack (Oracle Always Free VM or any Linux server with Docker):
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# Setup, update and backups: docs/DEPLOY_ORACLE.md  (deploy/oracle/install.sh does all of this for you).
+#
+# Only Caddy publishes ports (80, 443). Postgres, Redis and the API are reachable from the other containers only.
+# Memory limits below suit a 6-24 GB VM; change them in .env.prod (see .env.prod.example). They are ceilings, not
+# reservations: an idle stack uses well under 2 GB.
+
+name: searchos
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend: &backend
+  build:
+    context: ./backend
+    dockerfile: Dockerfile.prod
+  image: searchos-backend:local
+  env_file: .env.prod
+  restart: unless-stopped
+  logging: *logging
+  networks: [internal]
+  environment: &backend-env
+    ENVIRONMENT: production
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-searchos}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@postgres:5432/${POSTGRES_DB:-searchos}
+    REDIS_URL: redis://redis:6379/0
+    # One public origin (https://<DOMAIN>): the web app at /, the API under /api (Caddy strips the prefix).
+    CORS_ORIGINS: https://${DOMAIN:?set DOMAIN in .env.prod}
+    WEB_BASE_URL: https://${DOMAIN}
+    PUBLIC_API_URL: https://${DOMAIN}/api
+    GOOGLE_REDIRECT_URI: https://${DOMAIN}/api/integrations/google/callback
+    # The browser sees the API under /api, so the refresh cookie must be sent to /api/auth.
+    REFRESH_COOKIE_PATH: /api/auth
+    COOKIE_SECURE: "true"
+    ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
+    GIT_SHA: ${GIT_SHA:-}
+
+services:
+  caddy:
+    build:
+      context: .
+      dockerfile: deploy/caddy/Dockerfile
+      args:
+        VITE_API_URL: /api
+    image: searchos-caddy:local
+    restart: unless-stopped
+    logging: *logging
+    networks: [internal]
+    ports:
+      - "80:80"
+      - "443:443"
+    # Lets a Caddyfile block reach another project running on the same VM (docs/DEPLOY_ORACLE.md, "Sharing the VM").
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      SITE_ADDRESS: ${DOMAIN:?set DOMAIN in .env.prod}
+      CADDY_TLS_INTERNAL: ${CADDY_TLS_INTERNAL:-0}
+    command:
+      - sh
+      - -c
+      - >-
+        cp "/etc/caddy/tls-$${CADDY_TLS_INTERNAL}.caddy" /etc/caddy/tls.caddy &&
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    volumes:
+      - caddy_data:/data     # certificates and ACME account: keep this volume
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: ${CADDY_MEM_LIMIT:-256m}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2019/config/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    <<: *backend
+    # Migrations first, then the server. --proxy-headers trusts X-Forwarded-* only from the Docker network.
+    command:
+      - sh
+      - -c
+      - >-
+        alembic upgrade head &&
+        exec uvicorn searchos.main:create_app --factory --host 0.0.0.0 --port 8000
+        --workers ${API_WORKERS:-2} --proxy-headers --forwarded-allow-ips=10.222.77.0/24
+        --no-server-header
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: ${API_MEM_LIMIT:-1536m}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 6s
+      retries: 10
+      start_period: 40s
+
+  worker:
+    <<: *backend
+    command: celery -A searchos.worker.app worker --loglevel=info --concurrency=2
+    depends_on:
+      api:
+        condition: service_healthy
+    # Chromium needs a larger /dev/shm than Docker's 64 MB default.
+    shm_size: 1gb
+    mem_limit: ${WORKER_MEM_LIMIT:-3g}
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A searchos.worker.app inspect ping -d celery@$$HOSTNAME --timeout 8 | grep -q pong"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 40s
+
+  beat:
+    <<: *backend
+    command: celery -A searchos.worker.app beat --loglevel=info --schedule /data/celerybeat-schedule
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - beat_data:/data
+    mem_limit: ${BEAT_MEM_LIMIT:-384m}
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    networks: [internal]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-searchos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-searchos}
+    command: ["postgres", "-c", "shared_buffers=${PG_SHARED_BUFFERS:-256MB}", "-c", "max_connections=100"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    mem_limit: ${POSTGRES_MEM_LIMIT:-1536m}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-searchos} -d ${POSTGRES_DB:-searchos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *logging
+    networks: [internal]
+    # noeviction: Redis is the Celery queue; it must refuse writes rather than drop queued jobs.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    mem_limit: ${REDIS_MEM_LIMIT:-384m}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+networks:
+  internal:
+    ipam:
+      config:
+        - subnet: 10.222.77.0/24
+
+volumes:
+  pgdata:
+  redisdata:
+  beat_data:
+  caddy_data:
+  caddy_config:

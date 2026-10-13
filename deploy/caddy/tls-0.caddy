@@ -1,0 +1,2 @@
+# Default: Caddy gets a public certificate from Let's Encrypt automatically.
+header -Server

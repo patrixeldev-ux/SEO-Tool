@@ -27,7 +27,12 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=15, ge=1, le=240)
     refresh_token_ttl_days: int = Field(default=30, ge=1, le=90)
     refresh_cookie_name: str = "searchos_refresh"
+    # The cookie is only sent to this path. Behind a reverse proxy that serves the API under a prefix
+    # (production: Caddy strips "/api"), the browser sees "/api/auth", so set REFRESH_COOKIE_PATH=/api/auth.
     refresh_cookie_path: str = "/auth"
+    # Public self-service sign-up (POST /auth/register). On for development; the production kit turns it
+    # off (ALLOW_REGISTRATION=false) and accounts are created with `python -m searchos.create_user`.
+    allow_registration: bool = True
     # None = derive from environment (Secure cookies in production only).
     cookie_secure: bool | None = None
 
