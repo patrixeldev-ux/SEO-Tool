@@ -98,6 +98,27 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  edge:
+    name: Edge Worker (typecheck, tests in the Workers runtime)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: edge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: edge/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: edge/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
   compose:
     name: Docker dev stack boots (build, migrate, seed, login, web)
     runs-on: ubuntu-latest

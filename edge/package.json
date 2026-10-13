@@ -1,0 +1,23 @@
+{
+  "name": "searchos-edge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.0",
+    "@cloudflare/workers-types": "^5.20261013.1",
+    "@vitest/runner": "^4.1.11",
+    "@vitest/snapshot": "^4.1.11",
+    "htmlrewriter": "^0.0.13",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.149.0"
+  }
+}
