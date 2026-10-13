@@ -4,6 +4,7 @@ import {
   FileText,
   FlaskConical,
   Globe,
+  History,
   ListChecks,
   Settings,
   Sparkles,
@@ -36,6 +37,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: "Act",
     items: [
       { to: "/actions", label: "Actions", icon: Zap },
+      { to: "/deployments", label: "Deployments", icon: History },
       { to: "/experiments", label: "Experiments", icon: FlaskConical },
       { to: "/content", label: "Content", icon: FileText },
     ],

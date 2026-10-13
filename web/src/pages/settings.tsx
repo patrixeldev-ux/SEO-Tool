@@ -2,14 +2,16 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { IntegrationsPanel, returnMessage } from "@/components/integrations/site-integrations";
 import { PageHeader } from "@/components/page-header";
+import { DeploySettingsPanel } from "@/components/settings/deploy-settings";
 import { AiSettingsPanel } from "@/components/settings/ai-settings";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth";
 
-type Tab = "general" | "ai";
+type Tab = "general" | "deploy" | "ai";
 const TABS: { key: Tab; label: string }[] = [
   { key: "general", label: "General" },
+  { key: "deploy", label: "Deploy" },
   { key: "ai", label: "AI" },
 ];
 
@@ -18,7 +20,7 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const search = useRouterState({ select: (s) => s.location.search }) as Record<string, unknown>;
   if (session.status !== "authenticated" || !activeOrg) return null;
-  const tab: Tab = search.tab === "ai" ? "ai" : "general";
+  const tab: Tab = search.tab === "ai" ? "ai" : search.tab === "deploy" ? "deploy" : "general";
   return (
     <>
       <PageHeader title="Settings" description="Your account, the active organisation, its integrations and the AI." />
@@ -29,7 +31,7 @@ export function SettingsPage() {
             type="button"
             role="tab"
             aria-selected={tab === key}
-            onClick={() => void navigate({ to: "/settings", search: key === "ai" ? { tab: "ai" } : {} })}
+            onClick={() => void navigate({ to: "/settings", search: key === "general" ? {} : { tab: key } })}
             className="-mb-px border-b-2 border-transparent px-4 py-2 text-sm font-medium text-muted-foreground aria-selected:border-primary aria-selected:text-foreground"
           >
             {label}
@@ -38,6 +40,8 @@ export function SettingsPage() {
       </div>
       {tab === "ai" ? (
         <AiSettingsPanel />
+      ) : tab === "deploy" ? (
+        <DeploySettingsPanel />
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2">

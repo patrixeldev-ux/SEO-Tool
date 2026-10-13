@@ -439,6 +439,8 @@ export type ActionStatus =
   | "rejected"
   | "rolled_back"
   | "manual_done"
+  | "stale"
+  | "needs_manual"
   | "obsolete";
 export type RiskClass = "auto" | "approve" | "manual";
 
@@ -533,4 +535,134 @@ export interface ActionFilters {
   risk_class?: RiskClass[];
   type?: string[];
   manual?: boolean;
+}
+
+// ---- Phase 4: deploying ---------------------------------------------------------------------------------
+export type DeployMethod = "cloudflare" | "wordpress" | "github";
+export type DeploymentStatus = "pending" | "applied" | "pending_merge" | "verified" | "failed" | "reverting" | "reverted";
+export type BatchStatus = "pending" | "applied" | "verified" | "partial" | "failed" | "reverted";
+
+export interface Ownership {
+  verified: boolean;
+  verified_at: string | null;
+  method: string | null;
+  checked_at: string | null;
+  error: string | null;
+  token: string;
+  dns_host: string;
+  dns_value: string;
+  file_path: string;
+  file_url: string;
+  file_content: string;
+}
+
+export interface Deployment {
+  id: string;
+  action_id: string;
+  batch_id: string;
+  method: DeployMethod;
+  url: string;
+  action_type: string;
+  field: string;
+  status: DeploymentStatus;
+  error: string | null;
+  ops: Record<string, unknown>[];
+  before_snapshot: { value?: unknown } | null;
+  after_snapshot: { value?: unknown; after_rollback?: unknown; restored?: boolean } | null;
+  pr_url: string | null;
+  can_rollback: boolean;
+  verify_attempts: number;
+  created_at: string;
+  deployed_at: string | null;
+  verified_at: string | null;
+  reverted_at: string | null;
+}
+
+export interface DeployBatch {
+  id: string;
+  method: DeployMethod;
+  trigger: "manual" | "autopilot";
+  status: BatchStatus;
+  created_by: string | null;
+  created_at: string;
+  finished_at: string | null;
+  summary: Record<string, unknown>;
+  counts: Record<string, number>;
+}
+
+export interface DeploySkip {
+  action_id: string;
+  reason: string;
+}
+
+export interface DeployResult {
+  batch: DeployBatch | null;
+  deployments: Deployment[];
+  skipped: DeploySkip[];
+}
+
+export interface RollbackResult {
+  reverted: Deployment[];
+  skipped: DeploySkip[];
+}
+
+export interface DeployConnection {
+  method: DeployMethod;
+  status: "connected" | "needs_attention" | "disconnected" | string;
+  label: string | null;
+  last_error: string | null;
+  last_tested_at: string | null;
+  meta: Record<string, unknown>;
+  chosen: boolean;
+}
+
+export interface DeployConnections {
+  deploy_method: DeployMethod | null;
+  connections: DeployConnection[];
+  verified: boolean;
+}
+
+export interface DeployTest {
+  ok: boolean;
+  message: string;
+  connection: DeployConnection;
+}
+
+export interface CloudflareSetup {
+  site_token: string;
+  signing_secret: string;
+  rules_url: string;
+  host: string;
+  route: string;
+  connection: DeployConnection;
+}
+
+export interface GithubPathRule {
+  url: string;
+  file: string;
+}
+
+export interface AutopilotSettings {
+  enabled: boolean;
+  weekly_cap: number;
+  used_this_week: number;
+  max_cap: number;
+  ready: boolean;
+  note: string;
+}
+
+export interface AppNotification {
+  id: string;
+  site_id: string | null;
+  batch_id: string | null;
+  kind: string;
+  title: string;
+  body: string;
+  read: boolean;
+  created_at: string;
+}
+
+export interface Notifications {
+  unread: number;
+  items: AppNotification[];
 }

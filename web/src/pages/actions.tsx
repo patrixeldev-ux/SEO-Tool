@@ -4,6 +4,7 @@ import { ArrowLeft, Download, FileText, RefreshCw, Zap } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { ActionCard, type ActionHandlers } from "@/components/actions/action-card";
+import { DeployPanel } from "@/components/actions/deploy-panel";
 import { AutopilotCard } from "@/components/actions/autopilot-card";
 import { NeedsAiBanner } from "@/components/actions/ai-banner";
 import { HandoffDialog } from "@/components/actions/handoff-dialog";
@@ -90,6 +91,10 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: "proposed", label: STATUS_LABELS.proposed },
   { value: "needs_ai", label: STATUS_LABELS.needs_ai },
   { value: "approved", label: STATUS_LABELS.approved },
+  { value: "deployed", label: STATUS_LABELS.deployed },
+  { value: "needs_manual", label: STATUS_LABELS.needs_manual },
+  { value: "stale", label: STATUS_LABELS.stale },
+  { value: "rolled_back", label: STATUS_LABELS.rolled_back },
   { value: "rejected", label: STATUS_LABELS.rejected },
 ];
 
@@ -201,9 +206,23 @@ export function SiteActionsPage() {
     },
     onError: (error) => setNotice({ kind: "error", text: errorText(error) }),
   });
+  const autopilotSettings = useQuery({
+    queryKey: ["autopilot", orgId, siteId],
+    queryFn: () => client.autopilotSettings(siteId),
+  });
+  const saveCap = useMutation({
+    mutationFn: (cap: number) => client.saveAutopilot(siteId, { weekly_cap: cap }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["autopilot", orgId, siteId] }),
+    onError: (error) => setNotice({ kind: "error", text: errorText(error) }),
+  });
+  const approvedCount = useQuery({
+    queryKey: ["actions", orgId, siteId, "approved-count"],
+    queryFn: async () => (await client.listActions(siteId, { manual: false, status: ["approved"] })).length,
+  });
   const autopilot = useMutation({
     mutationFn: (enabled: boolean) => client.updateSite(siteId, { autopilot_enabled: enabled }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["autopilot", orgId, siteId] });
       void queryClient.invalidateQueries({ queryKey: ["sites", orgId] });
       void queryClient.invalidateQueries({ queryKey: ["action-summary", orgId, siteId] });
     },
@@ -275,7 +294,7 @@ export function SiteActionsPage() {
         title={site ? `Actions: ${site.display_name}` : "Actions"}
         description={
           site
-            ? `${siteLabel(site)}. Every suggested change, most valuable first. Nothing is changed on your website until Phase 4.`
+            ? `${siteLabel(site)}. Every suggested change, most valuable first. Nothing changes on your website until you deploy it.`
             : undefined
         }
         actions={
@@ -327,9 +346,12 @@ export function SiteActionsPage() {
           <AutopilotCard
             enabled={data.autopilot_enabled}
             canChange={canAdmin}
-            busy={autopilot.isPending}
+            busy={autopilot.isPending || saveCap.isPending}
             onChange={(next) => autopilot.mutate(next)}
+            settings={autopilotSettings.data}
+            onSaveCap={(cap) => saveCap.mutate(cap)}
           />
+          <DeployPanel siteId={siteId} approvedCount={approvedCount.data ?? 0} canDeploy={canAdmin} onChanged={refresh} />
           <p className="text-xs text-muted-foreground">
             {data.last_plan
               ? `Last planned ${new Date(data.last_plan.finished_at ?? data.last_plan.created_at).toLocaleString()}${

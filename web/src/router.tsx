@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { ActionsIndexPage, SiteActionsPage } from "@/pages/actions";
 import { AuditIndexPage, SiteAuditPage } from "@/pages/audit";
 import { ComingSoonPage } from "@/pages/coming-soon";
+import { DeploymentsIndexPage, SiteDeploymentsPage } from "@/pages/deployments";
 import { GoogleSetupPage } from "@/pages/help";
 import { LoginPage } from "@/pages/login";
 import { RegisterPage } from "@/pages/register";
@@ -34,6 +35,8 @@ const siteSearchRoute = createRoute({ getParentRoute: () => appRoute, path: "/se
 const googleSetupRoute = createRoute({ getParentRoute: () => appRoute, path: "/help/google-setup", component: GoogleSetupPage });
 const actionsIndexRoute = createRoute({ getParentRoute: () => appRoute, path: "/actions", component: ActionsIndexPage });
 const siteActionsRoute = createRoute({ getParentRoute: () => appRoute, path: "/actions/$siteId", component: SiteActionsPage });
+const deploymentsIndexRoute = createRoute({ getParentRoute: () => appRoute, path: "/deployments", component: DeploymentsIndexPage });
+const siteDeploymentsRoute = createRoute({ getParentRoute: () => appRoute, path: "/deployments/$siteId", component: SiteDeploymentsPage });
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/settings",
@@ -70,6 +73,8 @@ export const routeTree = rootRoute.addChildren([
     googleSetupRoute,
     actionsIndexRoute,
     siteActionsRoute,
+    deploymentsIndexRoute,
+    siteDeploymentsRoute,
     settingsRoute,
     ...placeholderRoutes,
   ]),

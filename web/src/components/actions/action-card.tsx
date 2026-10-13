@@ -31,6 +31,8 @@ const STATUS_VARIANT: Record<ActionStatus, "secondary" | "success" | "warning" |
   rejected: "destructive",
   rolled_back: "destructive",
   manual_done: "success",
+  stale: "warning",
+  needs_manual: "warning",
   obsolete: "outline",
 };
 
@@ -41,6 +43,24 @@ export interface ActionHandlers {
   onReject: (action: PlanAction, reason: string) => void;
   /** Resolves when saved; rejects with the API error (whose `detail.problems` lists the validator messages). */
   onSave: (action: PlanAction, value: unknown) => Promise<void>;
+}
+
+function ManualDeployNote({ action }: { action: PlanAction }) {
+  const note = action.generation.deploy_manual as { reason?: string; handoff?: string } | undefined;
+  return (
+    <div role="note" className="space-y-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+      <p className="font-medium">A developer needs to make this change.</p>
+      <p className="text-muted-foreground">
+        {note?.reason ?? "Search OS could not find where this page lives in your code."} Nothing was changed on your site. Send the
+        text below to whoever edits the website.
+      </p>
+      {note?.handoff && (
+        <pre className="max-h-48 overflow-auto rounded bg-card p-2 text-xs whitespace-pre-wrap" aria-label="Instructions for your developer">
+          {note.handoff}
+        </pre>
+      )}
+    </div>
+  );
 }
 
 function Evidence({ action }: { action: PlanAction }) {
@@ -167,6 +187,7 @@ export function ActionCard({
           The AI could not produce a suggestion that passes the checks. {String(action.generation.reason ?? "")}
         </p>
       )}
+      {action.status === "needs_manual" && <ManualDeployNote action={action} />}
       {action.status === "rejected" && action.reject_reason && (
         <p className="text-sm text-muted-foreground">Rejected: {action.reject_reason}</p>
       )}
@@ -237,6 +258,11 @@ export function ActionCard({
           {action.status === "proposed" && action.risk_class !== "manual" && hasValue(action) && (
             <Button size="sm" onClick={() => handlers.onApprove(action)} disabled={busy}>
               Approve
+            </Button>
+          )}
+          {action.status === "needs_manual" && (
+            <Button size="sm" variant="outline" onClick={() => handlers.onApprove(action)} disabled={busy}>
+              Try deploying again
             </Button>
           )}
           {editable && (

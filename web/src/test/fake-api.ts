@@ -2,6 +2,7 @@ import { vi } from "vitest";
 
 import { ApiClient } from "@/lib/api/client";
 import { createActionsState, handleActionsRoute } from "@/test/fake-actions";
+import { createDeployState, handleDeployRoute } from "@/test/fake-deploy";
 import { createSearchState, handleSearchRoute } from "@/test/fake-search";
 import type {
   Audit,
@@ -43,6 +44,7 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
   };
   const search = createSearchState();
   const actions = createActionsState();
+  const deploy = createDeployState();
   const calls: { method: string; path: string; headers: Record<string, string>; body?: unknown }[] = [];
 
   const tokenBody = () => ({
@@ -118,6 +120,8 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
       Object.assign(site, body);
       return json(site);
     }
+    const deployResponse = handleDeployRoute(deploy, url, method, body);
+    if (deployResponse) return deployResponse;
     const actionsResponse = handleActionsRoute(actions, url, method, body, {
       get: () => Array.from(sitesByOrg.values()).flat().find((s) => url.pathname.includes(`/sites/${s.id}/`))?.autopilot_enabled ?? false,
     });
@@ -184,5 +188,5 @@ export function createFakeApi(options: { signedIn?: boolean; role?: Org["role"] 
   });
 
   const client = new ApiClient({ baseUrl: "http://api.test", fetch: fetchMock as unknown as typeof fetch });
-  return { client, fetchMock, calls, orgs, sitesByOrg, audits, auditData, search, actions };
+  return { client, fetchMock, calls, orgs, sitesByOrg, audits, auditData, search, actions, deploy };
 }
